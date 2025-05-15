@@ -4,7 +4,7 @@ import numpy as np
 from scipy.stats import linregress
 
 # Load CSV file
-file_path = "../data/lgad-2025-05-06-analysis.csv"  # Update this with your actual file path
+file_path = "lgad-2025-05-06-analysis.csv"  # Update this with your actual file path
 df = pd.read_csv(file_path)
 
 # User-defined filters

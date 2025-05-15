@@ -743,6 +743,8 @@ class CSVDataFilterApp(ttk.Frame):
 
            # Dynamically pad numbers based on their original length (3 or 4 digits)
            num_length = len(num_start)
+           prefix_start = prefix_start.replace("/home/pyepes/data/", "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
+           prefix_start = prefix_start.replace("2025-05-06","2025-05-05")
            files = [f"{prefix_start}{str(i).zfill(num_length)}{suffix_start}" for i in range(start_num, end_num + 1)]
 
            for file in files:
@@ -769,7 +771,7 @@ class CSVDataFilterApp(ttk.Frame):
 
            nPeaks_list = []  # List to store nPeaks for each file
            pDose_list  = []  # List to store nPeaks for each file
-           doseScale = 0.0054;
+           doseScale = 0.0054
            for file in all_files:
               self.parent.scope_view.get_peaks(file)
               nPeaks = len(self.parent.scope_view.peaks_below)

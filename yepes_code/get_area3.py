@@ -211,12 +211,12 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
       plt.legend()
       plt.grid()
 
-      graphicDir=f"plot-dose-2025-05-06/Beam={beam}-Z={Z}-HV={HV}"
+      graphicDir=f"plot-dose-2025-05-05/Beam={beam}-Z={Z}-HV={HV}"
       if not os.path.exists(graphicDir):
          os.makedirs(graphicDir)
-         #print(f"Directory created: {graphicDir}")
-      #else:
-         #print(f"Directory already exists: {graphicDir}")
+         print(f"Directory created: {graphicDir}")
+      else:
+         print(f"Directory already exists: {graphicDir}")
       
       graphicFile=f"{graphicDir}/dose-calc-pulse={pulse}-{ifile}.jpg"
       if verbose>2: print("graphicFile ", graphicFile)
@@ -228,7 +228,7 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
 
    return signal_area, nPeaks
 #==============================================================================
-log_file = "/home/pyepes/data/lgad-2025-05-06-analysis.csv"
+log_file = "lgad-2025-05-06-analysis.csv"
 if not os.path.exists(log_file):
     print(f"log file {log_file} not found")
     exit()
@@ -285,7 +285,6 @@ for pulse in pulses:
     for _, row in matching_rows.iterrows():
         file_min = int(row["FileMin"].split("-")[-1].replace(".csv", ""))
         file_max = int(row["FileMax"].split("-")[-1].replace(".csv", ""))
-        #file_max = file_min
 
         dose = row['Dose']
         signal_areas = []
@@ -294,6 +293,10 @@ for pulse in pulses:
             #if not i== 1422: continue
             #file_path = re.sub(r'\d{4}(?=\.csv)', str(i), f{row["FileMin"])
             file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", row["FileMin"])
+            file_path = file_path.replace("/home/pyepes/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
+            file_path = file_path.replace("2025-05-06","2025-05-05")
+            print("NEW FILE PATH")
+            print(file_path)
 
             if not os.path.exists(file_path):
                print("{file_path} does not exist, skip.")
@@ -310,7 +313,7 @@ for pulse in pulses:
         mean_signal_peak = np.mean(signal_peaks)
         if verbose>1:
            print("signal_areas ", signal_areas)
-           print(f"Pulse {pulse} Dose {dose} mean signal_area {mean_signal_area} ");
+           print(f"Pulse {pulse} Dose {dose} mean signal_area {mean_signal_area} ")
         mean_signal_areas.append(mean_signal_area)
         mean_signal_peaks.append(mean_signal_peak)
         doses.append(dose)
