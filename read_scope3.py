@@ -33,13 +33,20 @@ def update_plot(start_time=None, end_time=None):
     # Apply time mask
     mask = (time >= start_time) & (time <= end_time)
     only_positive_times = ((time >= 0) & (time <= end_time))
+    # z = np.polyfit(time[only_positive_times],-1*ch1[only_positive_times],4)
+    # plt.plot(x, y, marker='o', linestyle='', color='red')
+    # print(np.std(-1*ch1[only_positive_times]))
 
     # Clear the previous plot and re-plot the data
     ax.clear()
-    ax.plot(time[mask], -1*ch1[mask], label="CH1")
-    ax.axhline(-1*np.mean(ch1[mask]), color='g', linestyle='--', label="Baseline: mean of all data")
+    '''ax.plot(time[mask], -1*ch1[mask], label="CH1")
+    for point in ch1:
+        if (point - baseline > stdvmarker):
+            plt.plot()'''
+    # ax.axhline(-1*np.mean(ch1[mask]), color='g', linestyle='--', label="Baseline: mean of all data")
     ax.axhline(-1*np.mean(ch1[only_positive_times]), color='y', linestyle='--', label="Baseline: mean, excluding negative times")
     ax.plot(time[only_positive_times],np.abs(ch1[only_positive_times]-np.mean(ch1[only_positive_times])),color='b',linestyle='--',label="Subtracting background")
+    # ax.plot(time[only_positive_times],z,label="dynamic baseline")
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Voltage (V)")
     ax.set_title(f"Oscilloscope Data ({start_time} s to {end_time} s)")
