@@ -27,7 +27,7 @@ def read_csv(file_path, selected_channel="CH1"):
             reader = csv.reader(file)
             data_started = False
             for row in reader:
-                if row and row[0] == "TIME":
+                if row  == "TIME": # and row[0]
                     data_started = True
                     continue
                 if data_started and row:
@@ -211,7 +211,7 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
       plt.legend()
       plt.grid()
 
-      graphicDir=f"plot-dose-2025-05-05/Beam={beam}-Z={Z}-HV={HV}"
+      graphicDir=f"plot-dose-2025-03-24/Beam={beam}-Z={Z}-HV={HV}"
       if not os.path.exists(graphicDir):
          os.makedirs(graphicDir)
          print(f"Directory created: {graphicDir}")
@@ -228,15 +228,15 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
 
    return signal_area, nPeaks
 #==============================================================================
-log_file = "lgad-2025-05-06-analysis.csv"
+log_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/ACLGAD_only.csv"
 if not os.path.exists(log_file):
     print(f"log file {log_file} not found")
     exit()
 
 log_df = pd.read_csv(log_file)
 
-Detector="BNL"
-Channel=16
+Detector="ACLGADs 300 micron pitch"
+# Channel=16
 Beam="Electrons 110V"
 Beam="Electrons 85V"
 X=0
@@ -250,7 +250,6 @@ LV="5.7"
 
 verbose=1
 
-pulses=[1]
 pulses=[0.5,1,2,3]
 
 mean_signal_areas=[]
@@ -269,32 +268,33 @@ print(f"LV       {LV}")
 for pulse in pulses:
     matching_rows = log_df[
         (log_df["Detector"] == Detector) &
-        (log_df["Channel"] == Channel) &
-        (log_df["Beam"] == Beam) &
-        (log_df["X"] == X) &
-        (log_df["Z"] == Z) &
-        (log_df["Shield"] == Shield) & 
-        (log_df["HV"] == HV) & 
-        (log_df["LV"] == LV) & 
+        # (log_df["Channel"] == Channel) &
+        (log_df["Beam intensity (V)"] == Beam) &
+        (log_df["Distance (cm)"] == X) &
+        (log_df["Lateral displacement (cm)"] == Z) &
+        (log_df["Shielding or not"] == Shield) & 
+        # (log_df["HV"] == HV) & 
+        # (log_df["LV"] == LV) & 
      #  (log_df["Comment"] == Comment) & 
-        (log_df["Pulse"] == pulse)
+        (log_df["Pulse length (microseconds)"] == pulse)
     ]
     if verbose>0:
-       print("matching rows ", matching_rows[["Detector","Dose", "Pulse","X","Z","HV","LV"]])
+       print("matching rows ", matching_rows[["Detector","Recorded Dose (C*10^-8)", "Pulse length (microseconds)","Distance (cm)","Lateral displacement (cm)"]])
        #continue
     for _, row in matching_rows.iterrows():
-        file_min = int(row["FileMin"].split("-")[-1].replace(".csv", ""))
-        file_max = int(row["FileMax"].split("-")[-1].replace(".csv", ""))
+        file_min = int(row["Filename min"].split("-")[-1].replace(".csv", ""))
+        file_max = int(row["Filename max"].split("-")[-1].replace(".csv", ""))
 
-        dose = row['Dose']
+        dose = row['Recorded Dose (C*10^-8)']
         signal_areas = []
         signal_peaks = []
         for i in range(file_min, file_max + 1):
             #if not i== 1422: continue
             #file_path = re.sub(r'\d{4}(?=\.csv)', str(i), f{row["FileMin"])
-            file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", row["FileMin"])
-            file_path = file_path.replace("/home/pyepes/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
-            file_path = file_path.replace("2025-05-06","2025-05-05")
+            file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", row["Filename min"])
+            # REPLACE SECTION
+            # file_path = file_path.replace("/home/pyepes/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
+            # file_path = file_path.replace("2025-05-06","2025-05-05")
             print("NEW FILE PATH")
             print(file_path)
 
@@ -318,7 +318,8 @@ for pulse in pulses:
         mean_signal_peaks.append(mean_signal_peak)
         doses.append(dose)
 
-        matching_columns = ["Detector", "Channel", "Beam", "Z", "X", "HV", "LV", "Pulse"]
+        matching_columns = ["Detector", "Beam intensity (V)", "Lateral displacement (cm)", "Distance (cm)", "Pulse length (microseconds)"]
+        # matching_rows[["Detector","Recorded Dose (C*10^-8)", "Pulse length (microseconds)","Distance (cm)","Lateral displacement (cm)"]])
     # Find rows that match on all specified columns
         row['area']=mean_signal_area
         row['peaks']=mean_signal_peak

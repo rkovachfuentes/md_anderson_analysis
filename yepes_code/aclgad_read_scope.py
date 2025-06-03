@@ -17,9 +17,6 @@ import re
 from scipy.signal import find_peaks  # Import the function for peak detection
 from matplotlib.widgets import SpanSelector
 
-
-
-
 class ScopeViewApp(ttk.Frame):  # Changed base class to ttk.Frame
     def __init__(self, parent, master=None, **kwargs):
         super().__init__(master, **kwargs)  # Corrected superclass initialization
@@ -702,7 +699,7 @@ class CSVDataFilterApp(ttk.Frame):
             mask &= self.df[col].isin(selected_values)
 
         filtered_df = self.df[mask]
-        specific_columns=["FileMin","FileMax"]
+        specific_columns=["Filename min","Filename max"]
         #print("filtered_df ",filtered_df)
         file_info=filtered_df[specific_columns]
         #print("file_info ",file_info)
@@ -711,8 +708,8 @@ class CSVDataFilterApp(ttk.Frame):
         file_df_rows=[]
         #for index, row in file_info.iterrows():
         for index, row in filtered_df.iterrows():
-           start_file = row['FileMin']
-           end_file   = row['FileMax']
+           start_file = row['Filename min']
+           end_file   = row['Filename max']
 
            if ( len(start_file) < 2 ): continue;
            if ( len(end_file)   < 2 ): continue;
@@ -764,7 +761,7 @@ class CSVDataFilterApp(ttk.Frame):
         if not file_df_rows:
             print("No file found.")
         else:
-           self.parent.df = pd.DataFrame(file_df_rows).drop(columns=["FileMin","FileMax"])
+           self.parent.df = pd.DataFrame(file_df_rows).drop(columns=["Filename min","Filename max"])
            print("CCCC upload_files self.parent.df ", self.parent.df)
 
            self.parent.scope_view.open_file_from_paths(all_files)
@@ -788,7 +785,6 @@ class CSVDataFilterApp(ttk.Frame):
 
            self.parent.analysis.update_plot_tab_columns()
            #print(self.parent.df)
-           
     def reset_filters(self):
         """Resets all selected filters and clears the result text."""
         if self.df is not None:
@@ -884,10 +880,10 @@ class CSVDataFilterApp(ttk.Frame):
 
             # Remove directory path from FileMin & FileMax columns
             df_to_display = filtered_df.drop(columns=self.hidden_columns, errors='ignore').copy()
-            if 'FileMin' in df_to_display.columns:
-                df_to_display['FileMin'] = df_to_display['FileMin'].apply(os.path.basename)
-            if 'FileMax' in df_to_display.columns:
-                df_to_display['FileMax'] = df_to_display['FileMax'].apply(os.path.basename)
+            if 'Filename min' in df_to_display.columns:
+                df_to_display['Filename min'] = df_to_display['Filename min'].apply(os.path.basename)
+            if 'Filename max' in df_to_display.columns:
+                df_to_display['Filename max'] = df_to_display['Filename max'].apply(os.path.basename)
 
             # Configure alternating row colors
             self.result_text.tag_configure("even", background="light blue")
