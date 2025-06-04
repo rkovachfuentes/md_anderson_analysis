@@ -65,168 +65,204 @@ def read_csv(file_path, selected_channel="CH1"):
 #def get_area(file_path, pulse=2, Z=60, X=0, ifile=1560 ):
 def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
 
-   time, signal = read_csv(file_path)
-   # Determine the number of points corresponding to 0.1 microseconds
-   time_step = time[1] - time[0]  # Time difference between consecutive points
-   lookback_points = int(0.3e-6 / time_step)  # Number of points in 0.1 microseconds
+    time, signal = read_csv(file_path)
+    # Determine the number of points corresponding to 0.1 microseconds
+    time_step = time[1] - time[0]  # Time difference between consecutive points
+    lookback_points = int(0.3e-6 / time_step)  # Number of points in 0.1 microseconds
 
-   # Initialize variables to track the largest increase
-   largest_increase = -np.inf  # Start with the smallest possible number
-   start_index = None
-   end_index = None
+    # Initialize variables to track the largest increase
+    largest_increase = -np.inf  # Start with the smallest possible number
+    start_index = None
+    end_index = None
 
-   signal_min = np.min(signal)
-   signal_max = np.max(signal)
-   signal_range = signal_max-signal_min
-   shifted_min  = signal_min+0.8*signal_range
+    signal_min = np.min(signal)
+    signal_max = np.max(signal)
+    signal_range = signal_max-signal_min
+    shifted_min  = signal_min+0.8*signal_range
 
-   threshold = 0.05 * signal_range
-# Find indices where fluctuation exceeds the threshold
-   fluctuation_indices = []
-   for i in range(1, len(signal)):
-       if abs(signal[i] - signal[i-1]) > threshold:
-           fluctuation_indices.append(i)
+    threshold = 0.2 * signal_range
+    # Find indices where fluctuation exceeds the threshold
+    fluctuation_indices = []
+    for i in range(1, len(signal)):
+        if abs(signal[i] - signal[i-1]) > threshold:
+            fluctuation_indices.append(i)
 
-# Identify the start of fluctuations
-   if fluctuation_indices:
-      start_of_fluctuations = fluctuation_indices[0]
-      print(f"Signal starts fluctuating beyond 5% of max range at index {start_of_fluctuations}")
-   else:
-      print("No significant fluctuation found.")
-      start_of_fluctuations = 0
+    # Identify the start of fluctuations
+    if len(fluctuation_indices) > 1:
+        if pulse <= 1:
+            start_of_fluctuations = fluctuation_indices[0]
+            end_of_fluctuations = fluctuation_indices[-1]
+            print(f"Signal starts fluctuating beyond 5% of max range at index {start_of_fluctuations}")
+            print(f"Signal starts fluctuating beyond 5% of max range at index {end_of_fluctuations}")
+        else:
+            fluctuation_indices.sort(reverse=True)
+            if fluctuation_indices[0] > fluctuation_indices[1]:
+                end_of_fluctuations = fluctuation_indices[0]
+                start_of_fluctuations = fluctuation_indices[1]
+            else:
+                end_of_fluctuations = fluctuation_indices[1]
+                start_of_fluctuations = fluctuation_indices[0]
+    else:
+        print("No significant fluctuation found.")
+        start_of_fluctuations = 0
 
-   first_good_bin = start_of_fluctuations+int(5e-7/time_step)
-   first_good_bin = 1
-   print("first_good_bin ", first_good_bin)
+    first_good_bin = start_of_fluctuations+int(5e-7/time_step)
+    first_good_bin = 1
+    last_good_bin = 1
+    print("first_good_bin ", first_good_bin)
 
-   sigma = 10  # Standard deviation of the Gaussian kernel
-   # Loop backwards through the array
-   for i in range(len(signal) - 1, lookback_points - 1, -1):
-       # Calculate the signal difference over the lookback window
-       if signal[i] > shifted_min: continue
-       if i < first_good_bin: continue
-       signal_difference = signal[max(0,i - lookback_points)] - signal[i]
+    sigma = 10  # Standard deviation of the Gaussian kernel
+    # Loop backwards through the array
+    for i in range(len(signal) - 1, lookback_points - 1, -1):
+        # Calculate the signal difference over the lookback window
+        if signal[i] > shifted_min: continue
+        if i < first_good_bin: continue
+        signal_difference = signal[max(0,i - lookback_points)] - signal[i]
+        #print("signal_difference ", signal_difference, " time ", time[i]," signal ", signal[i]) 
+        #if time[i] < 0.0: continue
+        # Update if the current difference is the largest increase
+        if signal_difference > largest_increase:
+            largest_increase = signal_difference
+            start_index = i - lookback_points
+            end_index = i
 
-       #print("signal_difference ", signal_difference, " time ", time[i]," signal ", signal[i]) 
-       #if time[i] < 0.0: continue
-       # Update if the current difference is the largest increase
-       if signal_difference > largest_increase:
-           #print("**************** largest increase yet ")
-          largest_increase = signal_difference
-          start_index = i - lookback_points
-          end_index = i
+    # Initialize variables to track the largest increase
+    largest_increase = -np.inf  # Start with the smallest possible number
+    start_index_back = None
+    end_index_back = None
 
-   # Output the results
-   if verbose>1:
-      print(f"Largest increase: {largest_increase:.2f}")
-      print(f"Start index: {start_index}, Time: {time[start_index]:.6e} s signal {signal[start_index]}")
-      print(f"End index: {end_index}, Time: {time[end_index]:.6e} s signal {signal[end_index]}")
+    # moving BACKWARDS to find the end of the signal window
+    for i in range(lookback_points - 1, len(signal) - 1, 1):
+        # Calculate the signal difference over the lookback window
+        if signal[i] > shifted_min: continue
+        if i < last_good_bin: continue
+        signal_difference = signal[max(0,i - lookback_points)] - signal[i]
 
+        #print("signal_difference ", signal_difference, " time ", time[i]," signal ", signal[i]) 
+        #if time[i] < 0.0: continue
+        # Update if the current difference is the largest increase
+        if signal_difference > largest_increase:
+            print("**************** largest increase yet ")
+            largest_increase_back = signal_difference
+            start_index_back = i - lookback_points
+            end_index_back = i
+            print(start_index_back)
 
-   # Shift the starting point by 0.1 microseconds
-   shift_points = int(0.2e-6 / time_step)  # Number of points to shift earlier
-   shifted_start_index = max(0, start_index - shift_points)  # Ensure index is not negative
-
-   # Determine the region to remove
-   remove_start_index = shifted_start_index
-   remove_end_index = min(len(time) - 1, shifted_start_index + 3 * shift_points + int(pulse * 1e-6 / time_step))
-
-   # Remove the area by setting the signal to NaN in this region
-   signal_removed = np.copy(signal)
-   signal_removed[remove_start_index:remove_end_index + 1] = np.nan
-   #if pulse>2:
-   #   signal_removed[remove_start_index:len(signal)] = np.nan
-
-   # Interpolate the missing values
-   valid_mask = ~np.isnan(signal_removed)  # Mask to keep valid values
-   temp_interpolated_baseline = np.interp(time, time[valid_mask], signal_removed[valid_mask])
-
-   baseline_smoothed = gaussian_filter(temp_interpolated_baseline, sigma=sigma)
-
-   #  Interpolate the missing values after smoothing
-   interpolated_baseline = np.interp(time, time[valid_mask], baseline_smoothed[valid_mask])
-
-   corrected_signal = signal-interpolated_baseline
-
-   # Calculate the area under the interpolated curve in the removed region
-   removed_time = time[remove_start_index:remove_end_index + 1]  # Time in the removed region
-   corrected_signal_removed_values = corrected_signal[remove_start_index:remove_end_index + 1]
-   signal_removed_values = signal[remove_start_index:remove_end_index + 1]
-   signal_area   = abs(simpson(y=corrected_signal_removed_values, x=removed_time))
-
-   bins_around=30
-   baseline_offset=0
-   ch1=corrected_signal
-   selected_ch1=corrected_signal_removed_values
-   #dynamic_baseline = np.array([
-   #         np.mean(selected_ch1[max(0, i - bins_around):min(len(selected_ch1), i + bins_around)]) - baseline_offset
-   #         for i in selected_ch1 
-   #     ])
-   dynamic_baseline = np.array([
-       np.mean(selected_ch1[max(0, idx - bins_around):min(len(selected_ch1), idx + bins_around)]) - baseline_offset
-        for idx in range(len(selected_ch1))
-   ])
-   
-
-   selected_ch1 = np.nan_to_num(selected_ch1, nan=0.0, posinf=0.0, neginf=0.0)
-   dynamic_baseline = np.nan_to_num(dynamic_baseline, nan=0.0, posinf=0.0, neginf=0.0)
-        # Find peaks below the dynamic baseline
-   inverted_ch1 = -(selected_ch1 - dynamic_baseline)
-   peaks, _ = find_peaks(inverted_ch1, height=0)
-   peak_times = removed_time[peaks]
-   peak_values = selected_ch1[peaks]
-   nPeaks = len(peaks)
+    # Output the results
+    if verbose>1:
+        print(f"Largest increase: {largest_increase:.2f}")
+        print(f"Start index: {start_index}, Time: {time[start_index]:.6e} s signal {signal[start_index]}")
+        print(f"End index: {end_index}, Time: {time[end_index]:.6e} s signal {signal[end_index]}")
 
 
+    # Shift the starting point by 0.1 microseconds
+    shift_points = int(0.2e-6 / time_step)  # Number of points to shift earlier
+    shifted_start_index = max(0, start_index)  # Ensure index is not negative  - shift_points
+    if pulse >= 1:
+        shifted_end_index = max(0, end_index_back) #  - shift_points
+    else:
+        shifted_end_index = min(len(time) - 1, shifted_start_index + 3 * shift_points + int(pulse * 1e-6 / time_step))
+
+    # Determine the region to remove
+    remove_start_index = shifted_start_index
+    remove_end_index = shifted_end_index
+
+    # Remove the area by setting the signal to NaN in this region
+    signal_removed = np.copy(signal)
+    signal_removed[remove_start_index:remove_end_index + 1] = np.nan
+    #if pulse>2:
+    #   signal_removed[remove_start_index:len(signal)] = np.nan
+
+    # Interpolate the missing values
+    valid_mask = ~np.isnan(signal_removed)  # Mask to keep valid values
+    temp_interpolated_baseline = np.interp(time, time[valid_mask], signal_removed[valid_mask])
+
+    baseline_smoothed = gaussian_filter(temp_interpolated_baseline, sigma=sigma)
+
+    #  Interpolate the missing values after smoothing
+    interpolated_baseline = np.interp(time, time[valid_mask], baseline_smoothed[valid_mask])
+
+    corrected_signal = signal-interpolated_baseline
+
+    # Calculate the area under the interpolated curve in the removed region
+    removed_time = time[remove_start_index:remove_end_index + 1]  # Time in the removed region
+    corrected_signal_removed_values = corrected_signal[remove_start_index:remove_end_index + 1]
+    signal_removed_values = signal[remove_start_index:remove_end_index + 1]
+    signal_area   = abs(simpson(y=corrected_signal_removed_values, x=removed_time))
+
+    bins_around=30
+    baseline_offset=0
+    ch1=corrected_signal
+    selected_ch1=corrected_signal_removed_values
+    #dynamic_baseline = np.array([
+    #         np.mean(selected_ch1[max(0, i - bins_around):min(len(selected_ch1), i + bins_around)]) - baseline_offset
+    #         for i in selected_ch1 
+    #     ])
+    dynamic_baseline = np.array([
+        np.mean(selected_ch1[max(0, idx - bins_around):min(len(selected_ch1), idx + bins_around)]) - baseline_offset
+            for idx in range(len(selected_ch1))
+    ])
+    
+
+    selected_ch1 = np.nan_to_num(selected_ch1, nan=0.0, posinf=0.0, neginf=0.0)
+    dynamic_baseline = np.nan_to_num(dynamic_baseline, nan=0.0, posinf=0.0, neginf=0.0)
+            # Find peaks below the dynamic baseline
+    inverted_ch1 = -(selected_ch1 - dynamic_baseline)
+    peaks, _ = find_peaks(inverted_ch1, height=0)
+    peak_times = removed_time[peaks]
+    peak_values = selected_ch1[peaks]
+    nPeaks = len(peaks)
 
 
-   # Output the results
-   if verbose>1:
-      print(f"Shifted start index: {shifted_start_index}, Time: {time[shifted_start_index]:.6e} s")
-      print(f"Removed area start time: {time[remove_start_index]:.6e} s")
-      print(f"Removed area end time: {time[remove_end_index]:.6e} s")
-      print(f"Area under interpolated curve in signal region: {signal_area:.3e} ")
-
-   # Visualization
-   if savePlot:
-      plt.figure(figsize=(10, 6))
-      plt.plot(time, signal, label="Original Signal", color="blue")
-      plt.plot(time, corrected_signal, label="Corrected Signal", color="green")
-      plt.plot(time, interpolated_baseline, label="Interpolated Baseline", color="red")
-      plt.axvspan(time[remove_start_index], time[remove_end_index], color="yellow", alpha=0.3, label="Removed Region")
-      plt.axvline(time[shifted_start_index], color="green", linestyle="--", label="Shifted Start")
-      plt.scatter(peak_times, peak_values, color='purple', marker='x', label="Peaks in Signal Zone")
-      plt.xlabel("Time (s)")
-      plt.ylabel("Signal")
-      plt.title("Signal Suppression and Interpolation")
-      plt.text(
-         0.6 * max(time),  # X-coordinate (adjust based on your plot range)
-         min(signal)+0.05 * (max(signal)-min(signal)),  # Y-coordinate (adjust based on your plot range)
-         f"Signal Area: {signal_area:.3e}",  # Text for the label
-         fontsize=12,
-         #color="purple",
-         bbox=dict(facecolor='white', alpha=0.7, edgecolor='purple')  # Optional styling
-      )
-      
-      plt.legend()
-      plt.grid()
-
-      graphicDir=f"plot-dose-2025-05-05/Beam={beam}-Z={Z}-HV={HV}"
-      if not os.path.exists(graphicDir):
-         os.makedirs(graphicDir)
-         print(f"Directory created: {graphicDir}")
-      else:
-         print(f"Directory already exists: {graphicDir}")
-      
-      graphicFile=f"{graphicDir}/dose-calc-pulse={pulse}-{ifile}.jpg"
-      if verbose>2: print("graphicFile ", graphicFile)
-      plt.savefig(graphicFile, format="jpeg", dpi=300)  
-      if showPlot:
-         plt.show()
-      plt.close()
 
 
-   return signal_area, nPeaks
+    # Output the results
+    if verbose>1:
+        print(f"Shifted start index: {shifted_start_index}, Time: {time[shifted_start_index]:.6e} s")
+        print(f"Removed area start time: {time[remove_start_index]:.6e} s")
+        print(f"Removed area end time: {time[remove_end_index]:.6e} s")
+        print(f"Area under interpolated curve in signal region: {signal_area:.3e} ")
+
+    # Visualization
+    if savePlot:
+        plt.figure(figsize=(10, 6))
+        plt.plot(time, signal, label="Original Signal", color="blue")
+        plt.plot(time, corrected_signal, label="Corrected Signal", color="green")
+        plt.plot(time, interpolated_baseline, label="Interpolated Baseline", color="red")
+        plt.axvspan(time[remove_start_index], time[remove_end_index], color="yellow", alpha=0.3, label="Removed Region")
+        plt.axvline(time[shifted_start_index], color="green", linestyle="--", label="Shifted Start")
+        plt.scatter(peak_times, peak_values, color='purple', marker='x', label="Peaks in Signal Zone")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Signal")
+        plt.title("Signal Suppression and Interpolation")
+        plt.text(
+            0.6 * max(time),  # X-coordinate (adjust based on your plot range)
+            min(signal)+0.05 * (max(signal)-min(signal)),  # Y-coordinate (adjust based on your plot range)
+            f"Signal Area: {signal_area:.3e}",  # Text for the label
+            fontsize=12,
+            #color="purple",
+            bbox=dict(facecolor='white', alpha=0.7, edgecolor='purple')  # Optional styling
+        )
+        
+        plt.legend()
+        plt.grid()
+
+        graphicDir=f"plot-dose-2025-05-05/Beam={beam}-Z={Z}-HV={HV}"
+        if not os.path.exists(graphicDir):
+            os.makedirs(graphicDir)
+            print(f"Directory created: {graphicDir}")
+        else:
+            print(f"Directory already exists: {graphicDir}")
+        
+        graphicFile=f"{graphicDir}/dose-calc-pulse={pulse}-{ifile}.jpg"
+        if verbose>2: print("graphicFile ", graphicFile)
+        plt.savefig(graphicFile, format="jpeg", dpi=300)  
+        if showPlot:
+            plt.show()
+        plt.close()
+
+
+    return signal_area, nPeaks
 #==============================================================================
 log_file = "lgad-2025-05-06-analysis.csv"
 if not os.path.exists(log_file):
