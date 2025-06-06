@@ -8,6 +8,7 @@ import re
 from scipy.integrate import simpson  # Use `simpson` instead of `simps`
 from scipy.ndimage import gaussian_filter
 from scipy.signal import find_peaks
+from pathlib import Path
 
 verbose=1
 savePlot=True
@@ -23,32 +24,44 @@ def read_csv(file_path, selected_channel="CH1"):
     ch1 = []
     ch2 = []
     num_columns = 0
+    file_path_check = Path(file_path)
+    if file_path_check.is_file():
+        pass
+    else:
+        file_path = file_path.replace("CH1","CH2")
+        print("--> CH2 case detected")
     try:
         with open(file_path, 'r') as file:
             reader = csv.reader(file)
             data_started = False
+            for i in range(0,20,1):
+                next(reader, None)
             for row in reader:
                 if row[0]  == "TIME": # and row[0]
                     data_started = True
+                    print("data started!")
                     continue
                 if data_started and row:
                     try:
                         num_columns = len(row)
-                        time.append(float(row[0]))
-                        ch1.append(float(row[1]))
                         if num_columns == 3:
                             ch2.append(float(row[2]))  # Read third column if it exists
                         elif num_columns == 2:
+                            time.append(float(row[0]))
+                            ch1.append(float(row[1]))
                             ch2.append(float(0))
+                        elif num_columns == 0:
+                            break
                     except ValueError:
                         print(f"Skipping invalid data row: {row}")
+            print(time[0])
     except FileNotFoundError:
         print(f"Error: File not found at {file_path}")
         return np.array([]), np.array([])
-
+    
     except Exception as e:
         print(f"Error reading CSV file: {e}")
-        return np.array([]), np.array([])
+        return np.array(time), np.array(ch1)
 
     if num_columns == 2:
         print(np.array(ch1))
@@ -143,11 +156,11 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
         #if time[i] < 0.0: continue
         # Update if the current difference is the largest increase
         if signal_difference > largest_increase:
-            print("**************** largest increase yet ")
+            # print("**************** largest increase yet ")
             largest_increase_back = signal_difference
             start_index_back = i - lookback_points
             end_index_back = i
-            print(start_index_back)
+            # print(start_index_back)
 
     # Output the results
     if verbose>1:
@@ -285,7 +298,7 @@ Beam="85"
 # LV="5.7"
 pulse = "1.0"
 
-verbose=1
+verbose=0
 
 pulses=[0.5,1,2,3]
 
@@ -323,8 +336,8 @@ for pulse in pulses:
         file_max = row["Filename max"]
         file_min_num = int(row["Filename min"][-11:-7])
         file_max_num = int(row["Filename max"][-11:-7])
-        print("file min and max")
-        print(file_min_num, file_max_num)
+        # print("file min and max")
+        # print(file_min_num, file_max_num)
 
         dose = row['Recorded Dose (C*10^-8)']
         signal_areas = []
@@ -336,8 +349,8 @@ for pulse in pulses:
             # REPLACE SECTION
             # file_path = file_path.replace("/home/pyepes/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
             # file_path = file_path.replace("2025-05-06","2025-05-05")
-            print("NEW FILE PATH")
-            print(file_path)
+            # print("NEW FILE PATH")
+            # print(file_path)
 
             if not os.path.exists(file_path):
                print("{file_path} does not exist, skip.")
@@ -366,7 +379,7 @@ for pulse in pulses:
         row['peaks']=mean_signal_peak
 
         row_copy = row.copy()  # Prevents modification issues
-        print("row ", row_copy[matching_columns])
+        # print("row ", row_copy[matching_columns])
 
         df_row = pd.DataFrame([row_copy])
         
