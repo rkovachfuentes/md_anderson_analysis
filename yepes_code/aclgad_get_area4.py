@@ -84,10 +84,18 @@ def read_csv(file_path, selected_channel="CH1"):
 def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
 
     time, signal = read_csv(file_path)
+    # remove any signal less than 0
+    if signal.size == 0:
+        return
     # Determine the number of points corresponding to 0.1 microseconds
     time_step = time[1] - time[0]  # Time difference between consecutive points
     lookback_points = int(0.3e-6 / time_step)  # Number of points in 0.1 microseconds
-    signal = savgol_filter(signal, 701, 2)
+    w = savgol_filter(signal, 701, 2)
+    print("MIN MAX STATS")
+    print(np.amin(signal))
+    print(np.amax(signal))
+    # outlier_indices = np.where(signal > 0)
+    # signal = signal.remove(outlier_indices[0])
 
     # Initialize variables to track the largest increase
     largest_increase = -np.inf  # Start with the smallest possible number
@@ -98,11 +106,16 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
     signal_max = np.max(signal)
     signal_range = signal_max-signal_min
     shifted_min  = signal_min+0.8*signal_range
+    # outlier_top = (signal_range*0.95)+signal_min
+    # outlier_bottom = (signal_range*0.05)+signal_min
 
     threshold = 0.2 * signal_range
     # Find indices where fluctuation exceeds the threshold
     fluctuation_indices = []
     for i in range(1, len(signal)):
+        '''if ((signal[i] > outlier_top) or (signal[i] < outlier_bottom)):
+            del signal[i]
+            continue'''
         if abs(signal[i] - signal[i-1]) > threshold:
             fluctuation_indices.append(i)
 
@@ -141,12 +154,16 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
         #if time[i] < 0.0: continue
         # Update if the current difference is the largest increase
         if signal_difference > largest_increase:
-            largest_increase = signal_difference
-            start_index = i - lookback_points
-            end_index = i
+            if (time[i] <= 0):
+                continue
+            else:
+                largest_increase = signal_difference
+                start_index = i - lookback_points
+                end_index = i
 
     # Initialize variables to track the largest increase
     largest_increase = -np.inf  # Start with the smallest possible number
+    second_largest_increase = -np.inf
     start_index_back = 0
     end_index_back = 0
 
@@ -156,15 +173,17 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
         if signal[i] > shifted_min: continue
         if i < last_good_bin: continue
         signal_difference = signal[max(0,i - lookback_points)] - signal[i]
-
         #print("signal_difference ", signal_difference, " time ", time[i]," signal ", signal[i]) 
         #if time[i] < 0.0: continue
         # Update if the current difference is the largest increase
         if signal_difference > largest_increase:
             # print("**************** largest increase yet ")
-            largest_increase_back = signal_difference
-            start_index_back = i - lookback_points
-            end_index_back = i
+            if (time[i] <= 0):
+                continue
+            else:
+                largest_increase_back = signal_difference
+                start_index_back = i - lookback_points
+                end_index_back = i
             # print(start_index_back)
 
     # Output the results
@@ -267,7 +286,7 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
         plt.plot(time, signal, label="Original Signal", color="blue")
         plt.plot(time, corrected_signal, label="Corrected Signal", color="green")
         plt.plot(time, interpolated_baseline, label="Interpolated Baseline", color="red")
-        # plt.plot(time, w, 'black', label="smoothed signal (savgol)")  # high frequency noise removed
+        plt.plot(time, w, 'black', label="smoothed signal (savgol)")  # high frequency noise removed
         plt.axvspan(time[remove_start_index], time[remove_end_index], color="yellow", alpha=0.3, label="Removed Region")
         plt.axvline(time[shifted_start_index], color="green", linestyle="--", label="Shifted Start")
         plt.scatter(peak_times, peak_values, color='purple', marker='x', label="Peaks in Signal Zone")
@@ -339,6 +358,7 @@ pulses=[0.5,1,2,3]
 mean_signal_areas=[]
 mean_signal_peaks=[]
 doses=[]
+pulse_tracker = []
 
 
 print(f"Detector {Detector}")
@@ -355,7 +375,7 @@ for pulse in pulses:
         (log_df["Detector"] == Detector) &
         # (log_df["Channel"] == Channel) &
         # (log_df["Beam intensity (V)"] == Beam) &
-        # (log_df["Distance (cm)"] == X) &
+        # (log_df["Distance (cm)"] == distance) &
         # (log_df["Lateral displacement (cm)"] == Z) &
         # (log_df["Shielding or not"] == Shield) & 
         # (log_df["HV"] == HV) & 
@@ -381,7 +401,6 @@ for pulse in pulses:
             #if not i== 1422: continue
             print("row[Filename min]",row["Filename min"])
             #file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", row["Filename min"])
-
             file_path = row["Filename min"].replace(f"{file_min_num:04}",f"{i:04}")
             print("after file_path ", file_path)
             print("i",i)
@@ -398,7 +417,10 @@ for pulse in pulses:
                   continue
             
             #signal_area, signal_peak=get_area(file_path, pulse=pulse,Z=Z,X=X, ifile=i)
-            signal_area, signal_peak=get_area(file_path, pulse=pulse,ifile=i)
+            try:
+                signal_area, signal_peak=get_area(file_path, pulse=pulse,ifile=i)
+            except:
+                break
             signal_areas.append(signal_area)
             signal_peaks.append(signal_peak)
             if verbose>-1:
@@ -412,6 +434,7 @@ for pulse in pulses:
         mean_signal_areas.append(mean_signal_area)
         mean_signal_peaks.append(mean_signal_peak)
         doses.append(dose)
+        pulse_tracker.append(pulse)
 
         matching_columns = ["Detector", "Beam intensity (V)", "Lateral displacement (cm)", "Distance (cm)", "Pulse length (microseconds)"]
         # matching_rows[["Detector","Recorded Dose (C*10^-8)", "Pulse length (microseconds)","Distance (cm)","Lateral displacement (cm)"]])
@@ -443,6 +466,11 @@ initial_guess = [1.0, -0.5, 0.0]
 # Perform the curve fit
 # Create a NumPy array with NaN values
 # Create a boolean mask where True indicates a NaN
+print("DOSES, SIGNAL AREAS, PULSE TRACKER")
+print(doses)
+print(mean_signal_areas)
+print(pulse_tracker)
+print("------")
 nan_mask_doses = np.isnan(doses)
 # Invert the mask to select non-NaN values
 non_nan_mask_doses = ~nan_mask_doses
@@ -455,17 +483,28 @@ nan_mask_mean_signal = np.array([nan_mask_mean_signal[i] or inf_mask_mean_signal
 non_nan_mask_mean_signal = ~np.array(nan_mask_mean_signal)
 mean_signal_areas_clean = np.array(mean_signal_areas_clean)[non_nan_mask_mean_signal]
 doses_clean = np.array(doses_clean)[non_nan_mask_mean_signal]
+pulse_tracker = np.array(pulse_tracker)[non_nan_mask_doses]
+pulse_tracker = np.array(pulse_tracker)[non_nan_mask_mean_signal]
 
 # Perform logarithmic transformation on x_data
 log_x_data = np.log(doses_clean)
 
 # Fit a linear regression to log_x_data and y_data
 # The degree of the polynomial is 1 for linear regression
-a, b = np.polyfit(log_x_data, mean_signal_areas_clean, 1)
+try:
+    a, b = np.polyfit(log_x_data, mean_signal_areas_clean, 1)
+except:
+    a = 0
+    b = 0
 
 # Generate the fitted curve
-x_fit = np.linspace(min(doses_clean), max(doses_clean), 100)
-y_fit = a * np.log(x_fit) + b
+try:
+    x_fit = np.linspace(min(doses_clean), max(doses_clean), 100)
+    y_fit = a * np.log(x_fit) + b
+except:
+    x_fit = np.linspace(0,10,100)
+    y_fit = a * np.log(x_fit) + b
+    pulse_tracker = [0]
 
 # Plot the original data and the fitted curve
 
@@ -475,10 +514,32 @@ peaks_df = pd.DataFrame({'npeaks': npeaks_list, 'filenames': corresponding_files
 peaks_df.to_csv('peaks_df.csv', index=False)
 print("mean_signal_peaks ", mean_signal_peaks," doses ", doses)
 plt.figure(figsize=(10, 6))
-plt.scatter(doses, mean_signal_areas, label="Dose vs Area", color="blue", alpha=0.6)
-plt.plot(x_fit, y_fit, color='red', label='Logarithmic Fit', alpha=0.6)
+color_list = ["black","blue","green"]
+init_pulse = pulse_tracker[0]
+split_idx = []
+for i in range(0,len(pulse_tracker)):
+    if (pulse_tracker[i] != init_pulse):
+        split_idx.append(i)
+        init_pulse = pulse_tracker[i]
+split_pulses = np.split(pulse_tracker,split_idx,axis=0)
+split_doses = np.split(doses_clean,split_idx,axis=0)
+split_mean_signal_areas = np.split(mean_signal_areas_clean,split_idx,axis=0)
+print("~~~ ALL SPLIT ~~~")
+print(split_pulses)
+print(split_doses)
+print(split_mean_signal_areas)
+print("~~~~~~~~~~~~~~~~~")
+for i in range(0,len(split_pulses)-1):
+    print(i)
+    plt.scatter(split_doses[i], split_mean_signal_areas[i], label=split_pulses[i][0], color=color_list[i], alpha=0.6)
+    # add in generating a linear fit for each pulse width plot 
+    try:
+        m, b = np.polyfit(split_doses[i], split_mean_signal_areas[i], 1)
+        plt.plot(split_doses[i], m*split_doses[i] + b, color=color_list[i], label=f'Linear Fit: {split_pulses[i][0]:.2f}')
+    except:
+        pass
+plt.plot(x_fit, y_fit, color='red', label='overall logarithmic fit', alpha=0.6)
 #plt.plot(doses, mean_signal_peaks, label="Dose vs Peaks", color="blue", alpha=0.6)
-
 
 plt.xlabel("Dose (1e-8 C)")
 plt.ylabel("Area")

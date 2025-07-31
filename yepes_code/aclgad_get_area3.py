@@ -261,14 +261,14 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
         plt.legend()
         plt.grid()
 
-        graphicDir=f"plot-dose-2025-05-05/Beam={beam}-Z={Z}-HV={HV}"
+        graphicDir=f"set2-plot-dose-2025-03-24/Beam={beam}-Z={Z}-HV={HV}"
         if not os.path.exists(graphicDir):
             os.makedirs(graphicDir)
             print(f"Directory created: {graphicDir}")
         else:
             print(f"Directory already exists: {graphicDir}")
         
-        graphicFile=f"{graphicDir}/dose-calc-pulse={pulse}-{ifile}.jpg"
+        graphicFile=f"{graphicDir}/dose-pulse={dose}-{pulse}-{ifile}.jpg"
         if verbose>2: print("graphicFile ", graphicFile)
         plt.savefig(graphicFile, format="jpeg", dpi=300)  
         if showPlot:
