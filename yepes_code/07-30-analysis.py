@@ -13,6 +13,7 @@ from scipy.signal import peak_widths
 from pathlib import Path
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
+from aclgad_get_area4 import get_area_aclgad
 
 verbose=1
 savePlot=True
@@ -31,6 +32,7 @@ def read_csv(file_path_init, selected_channel="CH1"):
     file_path_check = Path(str(file_path_init))
     if file_path_check.is_file():
         print("filepath found")
+        file_path = file_path_init
         pass
     else:
         file_path = str(file_path_init)
@@ -44,6 +46,7 @@ def read_csv(file_path_init, selected_channel="CH1"):
             for row in reader:
                 if row[0]  == "TIME": # and row[0]
                     data_started = True
+                    print("data started!")
                     continue
                 if data_started and row:
                     try:
@@ -74,6 +77,7 @@ def read_csv(file_path_init, selected_channel="CH1"):
 #
 #==================================================================================================
 def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1" ):
+    print(file_path)
     time, signal = read_csv(file_path, selected_channel)
     # remove any signal less than 0
     if signal.size == 0:
@@ -219,12 +223,19 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, s
     corrected_signal = signal-interpolated_baseline
 
     # Calculate the area under the interpolated curve in the removed region
+    print("indices to remove")
+    print(remove_start_index, remove_end_index)
+    print("len of signal")
+    print(len(signal))
     removed_time = time[remove_start_index:remove_end_index + 1]  # Time in the removed region
     corrected_signal_removed_values = corrected_signal[remove_start_index:remove_end_index + 1]
     signal_removed_values = signal[remove_start_index:remove_end_index + 1]
+    print("corr signal removed values, removed time")
+    print(corrected_signal_removed_values)
+    print(removed_time)
     signal_area   = abs(simpson(y=corrected_signal_removed_values, x=removed_time))
 
-    bins_around=30
+    bins_around=10
     baseline_offset=0
     ch1=corrected_signal
     selected_ch1=corrected_signal_removed_values
@@ -288,14 +299,14 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, s
         plt.legend()
         plt.grid()
 
-        graphicDir=f"plot-dose-2025-07-30/Beam={beam}-Z={Z}-HV={HV}"
+        graphicDir="baselines"
         if not os.path.exists(graphicDir):
             os.makedirs(graphicDir)
             print(f"Directory created: {graphicDir}")
         else:
             print(f"Directory already exists: {graphicDir}")
         
-        graphicFile=f"{graphicDir}/dose-calc-pulse={pulse}-{ifile}-ch1.jpg"
+        graphicFile=f"{graphicDir}/{selected_channel}.jpg"
         if verbose>2: print("graphicFile ", graphicFile)
         plt.savefig(graphicFile, format="jpeg", dpi=300)  
         if showPlot:
@@ -350,13 +361,7 @@ def generate_baseline(log_file, selected_pulse=0.1, Z=60, HV=0, beam="Electrons 
     ch2_min_length = np.min(signal2_lengths)
     ch1_max_length = np.max(signal1_lengths)
     ch2_max_length = np.max(signal2_lengths)
-    print("max lengths")
-    print(ch1_max_length, ch2_max_length)
-    print("min lengths")
-    print(ch1_min_length, ch2_min_length)
-    print("shapes")
-    print(np.array(signal1_array).shape)
-    print(np.array(signal2_array).shape)
+    print("compacted channels")
     ch1_baseline = np.average(signal1_array,axis=0)
     ch2_baseline = np.average(signal2_array,axis=0)
     print("shapes")
@@ -378,14 +383,18 @@ def generate_baseline(log_file, selected_pulse=0.1, Z=60, HV=0, beam="Electrons 
         print(f"Directory created: {graphicDir}")
     else:
         print(f"Directory already exists: {graphicDir}")
+
+    output_file = "avg_of_tenth_with_time.csv"
+    if not os.path.exists(output_file):
+        data = {'TIME': time, 'CH1': ch1_baseline,'CH2': ch2_baseline}
+        df = pd.DataFrame(data)
+        df.to_csv(output_file, columns=['TIME','CH1','CH2'], index=False)
     
     graphicFile=f"{graphicDir}/baselines_from_tenth.jpg"
     if verbose>2: print("graphicFile ", graphicFile)
-    plt.savefig(graphicFile, format="jpeg", dpi=300)  
+    plt.savefig(graphicFile, format="jpeg", dpi=300)
     plt.show()
     plt.close()
-
-
     return signal_area, nPeaks
 
 
@@ -418,9 +427,12 @@ mean_signal_areas=[]
 mean_signal_peaks=[]
 doses=[]
 pulse_tracker = []
-generate_baseline("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/lgad-2025-07-30-log.csv",selected_pulse=0.1, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1")
-
-'''verbose=1
+'''file_name = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/avg_of_tenth_with_time.csv"
+if os.path.exists(file_name):
+    print("path exists")
+get_area(file_name, selected_channel="CH1" )
+get_area(file_name, selected_channel="CH2")'''
+verbose=1
 for pulse in pulses:
     matching_rows = log_df[
         (log_df["Detector"] == Detector) &
@@ -583,7 +595,7 @@ plt.ylabel("Area")
 plt.title(f"Dose vs Area")
 plt.legend()
 plt.grid()
-plt.show()'''
+plt.show()
 
 
 

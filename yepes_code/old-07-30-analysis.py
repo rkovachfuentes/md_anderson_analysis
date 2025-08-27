@@ -21,44 +21,43 @@ showPlot=False
 #==================================================================================================
 #
 #==================================================================================================
-def read_csv(file_path, selected_channel="CH1"):
+def read_csv(file_path_init, selected_channel="CH1"):
     # need to skip all header fields so it reads data correctly
     """Reads the oscilloscope CSV file and extracts time and channel data."""
     time = []
     ch1 = []
     ch2 = []
     num_columns = 0
-    file_path_check = Path(file_path)
+    file_path_check = Path(str(file_path_init))
     if file_path_check.is_file():
+        print("filepath found")
+        file_path = file_path_init
         pass
     else:
-        file_path = file_path.replace("CH1","CH2")
-        print("--> CH2 case detected")
+        file_path = str(file_path_init)
+        file_path = file_path.replace("/home/lgad/data","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code")
+        print(file_path)
     try:
-        with open(file_path, 'r') as file:
+        with open(file_path, mode='r') as file:
+            print("opened reader")
             reader = csv.reader(file)
             data_started = False
-            for i in range(0,20,1):
-                next(reader, None)
             for row in reader:
                 if row[0]  == "TIME": # and row[0]
                     data_started = True
-                    print("data started!")
                     continue
                 if data_started and row:
                     try:
                         num_columns = len(row)
-                        if num_columns == 3:
-                            ch2.append(float(row[2]))  # Read third column if it exists
-                        elif num_columns == 2:
+                        if num_columns == 0:
+                            break
+                        if num_columns >= 2:
                             time.append(float(row[0]))
                             ch1.append(float(row[1]))
-                            ch2.append(float(0))
-                        elif num_columns == 0:
-                            break
+                            if num_columns == 3:
+                                ch2.append(float(row[2]))  # Read third column if it exists
                     except ValueError:
                         print(f"Skipping invalid data row: {row}")
-            print(time[0])
     except FileNotFoundError:
         print(f"Error: File not found at {file_path}")
         return np.array([]), np.array([])
@@ -67,33 +66,24 @@ def read_csv(file_path, selected_channel="CH1"):
         print(f"Error reading CSV file: {e}")
         return np.array(time), np.array(ch1)
 
-    if num_columns == 2:
-        print(np.array(ch1))
+    if selected_channel=="CH1":
         return np.array(time), np.array(ch1)
-    else:
-        #return np.array(time), np.array(ch1) if selected_channel == "CH1" else np.array(time), np.array(ch2)
-        if selected_channel == "CH1":
-            #print("selected channel CH1")
-            return np.array(time), np.array(ch1) 
-        else:
-            return np.array(time), np.array(ch2)
+    if selected_channel=="CH2":
+        return np.array(time), np.array(ch2)
  
 #==================================================================================================
 #
 #==================================================================================================
-def get_area_aclgad(file_path, pulse=0.1, Z=60, HV=0, beam="Electrons 85V", ifile=1560 ):
-
-    time, signal = read_csv(file_path)
+def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1" ):
+    time, signal = read_csv(file_path, selected_channel)
     # remove any signal less than 0
     if signal.size == 0:
+        print("ZERO SIGNAL")
         return
     # Determine the number of points corresponding to 0.1 microseconds
     time_step = time[1] - time[0]  # Time difference between consecutive points
     lookback_points = int(0.3e-6 / time_step)  # Number of points in 0.1 microseconds
     w = savgol_filter(signal, 701, 2)
-    print("MIN MAX STATS")
-    print(np.amin(signal))
-    print(np.amax(signal))
     # outlier_indices = np.where(signal > 0)
     # signal = signal.remove(outlier_indices[0])
 
@@ -141,7 +131,6 @@ def get_area_aclgad(file_path, pulse=0.1, Z=60, HV=0, beam="Electrons 85V", ifil
     first_good_bin = start_of_fluctuations+int(5e-7/time_step)
     first_good_bin = 1
     last_good_bin = 1
-    print("first_good_bin ", first_good_bin)
 
     sigma = 10  # Standard deviation of the Gaussian kernel
     # Loop backwards through the array
@@ -154,12 +143,12 @@ def get_area_aclgad(file_path, pulse=0.1, Z=60, HV=0, beam="Electrons 85V", ifil
         #if time[i] < 0.0: continue
         # Update if the current difference is the largest increase
         if signal_difference > largest_increase:
-            if (time[i] <= 0):
+            '''if (time[i] <= 0):
                 continue
-            else:
-                largest_increase = signal_difference
-                start_index = i - lookback_points
-                end_index = i
+            else:'''
+            largest_increase = signal_difference
+            start_index = i - lookback_points
+            end_index = i
 
     # Initialize variables to track the largest increase
     largest_increase = -np.inf  # Start with the smallest possible number
@@ -219,14 +208,8 @@ def get_area_aclgad(file_path, pulse=0.1, Z=60, HV=0, beam="Electrons 85V", ifil
     # if there is no signal: select 2 signal points to remove
     valid_mask = ~np.isnan(signal_removed)  # Mask to keep valid values
     if np.all(valid_mask == False):
-        print("changing mask")
         valid_mask[-1] = True
         valid_mask[0] = True
-        print(valid_mask)
-    print(time)
-    print(valid_mask)
-    print(time[valid_mask])
-    print(signal_removed)
     temp_interpolated_baseline = np.interp(time, time[valid_mask], signal_removed[valid_mask])
 
     baseline_smoothed = gaussian_filter(temp_interpolated_baseline, sigma=sigma)
@@ -270,8 +253,6 @@ def get_area_aclgad(file_path, pulse=0.1, Z=60, HV=0, beam="Electrons 85V", ifil
     widths, width_heights, left_ips, right_ips = peak_widths(signal, peaks, rel_height=0.5)
     if widths.size != 0:
         max_width_idx = np.where(widths == max(widths))
-        print("MAX WIDTH IDX")
-        print(max_width_idx)
 
     # Output the results
     if verbose>1:
@@ -284,6 +265,7 @@ def get_area_aclgad(file_path, pulse=0.1, Z=60, HV=0, beam="Electrons 85V", ifil
     if savePlot:
         plt.figure(figsize=(10, 6))
         plt.plot(time, signal, label="Original Signal", color="blue")
+        # plt.plot(time, signal2, label="channel 2", color="orange")
         plt.plot(time, corrected_signal, label="Corrected Signal", color="green")
         plt.plot(time, interpolated_baseline, label="Interpolated Baseline", color="red")
         plt.plot(time, w, 'black', label="smoothed signal (savgol)")  # high frequency noise removed
@@ -307,27 +289,125 @@ def get_area_aclgad(file_path, pulse=0.1, Z=60, HV=0, beam="Electrons 85V", ifil
         plt.legend()
         plt.grid()
 
-        graphicDir=f"plot-dose-2025-03-24/Beam={beam}-Z={Z}-HV={HV}"
+        graphicDir=f"plot-dose-2025-07-30/Beam={beam}-Z={Z}-HV={HV}"
         if not os.path.exists(graphicDir):
             os.makedirs(graphicDir)
             print(f"Directory created: {graphicDir}")
         else:
             print(f"Directory already exists: {graphicDir}")
         
-        graphicFile=f"{graphicDir}/dose-calc-pulse={pulse}-{ifile}.jpg"
+        graphicFile=f"{graphicDir}/dose-calc-pulse={pulse}-{ifile}-ch1.jpg"
         if verbose>2: print("graphicFile ", graphicFile)
         plt.savefig(graphicFile, format="jpeg", dpi=300)  
         if showPlot:
             plt.show()
         plt.close()
+        # 699 - pulse 0.5
+    return signal_area, nPeaks
+
+def cleanup_files(directory_name, range_dict):
+    if not os.path.exists(directory_name):
+        print("directory does not exist")
+        return
+    for entry in os.listdir(directory_name):
+        full_path = os.path.join(directory_name, entry)
+        if not (("-ch2" in full_path) or ("-ch1" in full_path)):
+            os.remove(full_path)
+            continue
+        else:
+            split_list = entry.split("-")
+            print(split_list)
+            pulse = split_list[2].replace("pulse=","")
+            entry_val = split_list[3]
+            if (int(entry_val) < range_dict[pulse][0]) or (int(entry_val) > range_dict[pulse][1]):
+                os.remove(full_path)
+    return
+        
+#==============================================================================
+def generate_baseline(log_file, selected_pulse=0.1, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1"):
+    log_df = pd.read_csv(log_file)
+    signal1_array = []
+    signal2_array = []
+    signal1_lengths = []
+    signal2_lengths = []
+    for pulse in pulses:
+        matching_rows = log_df[
+            (log_df["Detector"] == Detector) &
+            (log_df["Pulse"] == selected_pulse)
+        ]
+        if verbose>1:
+            print("matching rows ", matching_rows["Detector", "Beam", "Z", "X", "Pulse", "Dose"])
+            continue
+        for _, row in matching_rows.iterrows():
+            file_min = str(row["FileMin"])
+            file_max = str(row["FileMax"])
+            file_min_num = file_min.replace("/home/lgad/data/2025-07-30/scope-results-2025-07-30-", "")
+            file_min_num = int(file_min_num.replace(".csv",""))
+            file_max_num = file_max.replace("/home/lgad/data/2025-07-30/scope-results-2025-07-30-", "")
+            file_max_num = int(file_max_num.replace(".csv",""))
+
+            dose = row['Dose']
+            signal_areas = []
+            signal_peaks = []
+            for i in range(file_min_num, file_max_num + 1):
+                #if not i== 1422: continue
+                file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", file_min)
+                file_path = file_path.replace("/home/pyepes/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
+                
+                #signal_area, signal_peak=get_area(file_path, pulse=pulse,Z=Z,X=X, ifile=i)
+                try:
+                    time, signal1 = read_csv(file_path, selected_channel="CH1")
+                    _, signal2 = read_csv(file_path, selected_channel="CH2")
+                    signal1_array.append(signal1[:6039])
+                    signal1_lengths.append(len(signal1))
+                    signal2_array.append(signal2[:6039])
+                    signal2_lengths.append(len(signal2))
+                except:
+                    break
+    ch1_min_length = np.min(signal1_lengths)
+    ch2_min_length = np.min(signal2_lengths)
+    ch1_max_length = np.max(signal1_lengths)
+    ch2_max_length = np.max(signal2_lengths)
+    print("max lengths")
+    print(ch1_max_length, ch2_max_length)
+    print("min lengths")
+    print(ch1_min_length, ch2_min_length)
+    print("shapes")
+    print(np.array(signal1_array).shape)
+    print(np.array(signal2_array).shape)
+    ch1_baseline = np.average(signal1_array,axis=0)
+    ch2_baseline = np.average(signal2_array,axis=0)
+    print("shapes")
+    print(ch1_baseline.shape)
+    print(ch1_baseline.shape)
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(time, ch1_baseline, label="ch1 baseline", color="purple")
+    plt.plot(time, ch2_baseline, label="ch2 baseline", color="red")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Signal")
+    plt.title("Baselines from 0.1 Pulse Data")
+    plt.legend()
+    plt.grid()
+
+    graphicDir=f"plot-dose-2025-07-30/Beam={beam}-Z={Z}-HV={HV}"
+    if not os.path.exists(graphicDir):
+        os.makedirs(graphicDir)
+        print(f"Directory created: {graphicDir}")
+    else:
+        print(f"Directory already exists: {graphicDir}")
+    
+    graphicFile=f"{graphicDir}/baselines_from_tenth.jpg"
+    if verbose>2: print("graphicFile ", graphicFile)
+    plt.savefig(graphicFile, format="jpeg", dpi=300)  
+    plt.show()
+    plt.close()
 
 
     return signal_area, nPeaks
-#==============================================================================
-def exponential_func(x, a, b, c):
-    return a * np.exp(b * x) + c
 
-log_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/ACLGAD_only.csv"
+
+log_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/lgad-2025-07-30-log.csv"
 if not os.path.exists(log_file):
     print(f"log file {log_file} not found")
     exit()
@@ -337,9 +417,7 @@ npeaks_list = []
 corresponding_files = []
 pulse_widths = []
 
-Detector="ACLGADs 300 micron pitch"
-# Channel=16
-Beam="85"
+Detector="BNL"
 # X=0
 # Z=135
 # Z=35
@@ -348,28 +426,18 @@ Beam="85"
 # Shield="No"
 # HV=30
 # LV="5.7"
-pulse = "1.0"
 
 verbose=0
 
 pulses=[1]
-pulses=[0.5,1,2,3]
+pulses=[0.1,0.5,1,2,3]
 
 mean_signal_areas=[]
 mean_signal_peaks=[]
 doses=[]
 pulse_tracker = []
 
-
-print(f"Detector {Detector}")
-# print(f"Beam     {Beam}")
-# print(f"X        {X}")
-# print(f"Z        {Z}")
-# print(f"HV       {HV}")
-# print(f"LV       {LV}")
- 
-
-verbose=1
+'''verbose=1
 for pulse in pulses:
     matching_rows = log_df[
         (log_df["Detector"] == Detector) &
@@ -381,35 +449,29 @@ for pulse in pulses:
         # (log_df["HV"] == HV) & 
         # (log_df["LV"] == LV) & 
      #  (log_df["Comment"] == Comment) & 
-        (log_df["Pulse length (microseconds)"] == pulse)
+        (log_df["Pulse"] == pulse)
     ]
     if verbose>1:
-       print("matching rows ", matching_rows[["Detector","Recorded Dose (C*10^-8)", "Pulse length (microseconds)","Distance (cm)","Lateral displacement (cm)"]])
+       print("matching rows ", matching_rows["Detector", "Beam", "Z", "X", "Pulse", "Dose"])
        continue
     for _, row in matching_rows.iterrows():
-        file_min = row["Filename min"]
-        file_max = row["Filename max"]
-        file_min_num = int(row["Filename min"][-11:-7])
-        file_max_num = int(row["Filename max"][-11:-7])
-        # print("file min and max")
-        # print(file_min_num, file_max_num)
+        file_min = str(row["FileMin"])
+        file_max = str(row["FileMax"])
+        file_min_num = file_min.replace("/home/lgad/data/2025-07-30/scope-results-2025-07-30-", "")
+        file_min_num = int(file_min_num.replace(".csv",""))
+        file_max_num = file_max.replace("/home/lgad/data/2025-07-30/scope-results-2025-07-30-", "")
+        file_max_num = int(file_max_num.replace(".csv",""))
 
-        dose = row['Recorded Dose (C*10^-8)']
+        dose = row['Dose']
         signal_areas = []
         signal_peaks = []
         for i in range(file_min_num, file_max_num + 1):
             #if not i== 1422: continue
-            print("row[Filename min]",row["Filename min"])
-            #file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", row["Filename min"])
-            file_path = row["Filename min"].replace(f"{file_min_num:04}",f"{i:04}")
+            file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", file_min)
+            file_path = row["FileMin"].replace(f"{file_min_num:04}",f"{i:04}")
+            file_path = file_path.replace("/home/lgad/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
             print("after file_path ", file_path)
             print("i",i)
-            if 1==1: exit
-            # REPLACE SECTION
-            # file_path = file_path.replace("/home/pyepes/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
-            # file_path = file_path.replace("2025-05-06","2025-05-05")
-            # print("NEW FILE PATH")
-            # print(file_path)
             if not os.path.exists(file_path):
                file_path = file_path.replace("CH1","CH2")
                if not os.path.exists(file_path):
@@ -418,7 +480,7 @@ for pulse in pulses:
             
             #signal_area, signal_peak=get_area(file_path, pulse=pulse,Z=Z,X=X, ifile=i)
             try:
-                signal_area, signal_peak=get_area(file_path, pulse=pulse,ifile=i)
+                signal_area, signal_peak=get_area(file_path, pulse=pulse,ifile=i, selected_channel="CH1")
             except:
                 break
             signal_areas.append(signal_area)
@@ -435,8 +497,7 @@ for pulse in pulses:
         mean_signal_peaks.append(mean_signal_peak)
         doses.append(dose)
         pulse_tracker.append(pulse)
-
-        matching_columns = ["Detector", "Beam intensity (V)", "Lateral displacement (cm)", "Distance (cm)", "Pulse length (microseconds)"]
+        matching_columns = ["Detector", "Beam", "Z", "X", "Pulse", "Dose"]
         # matching_rows[["Detector","Recorded Dose (C*10^-8)", "Pulse length (microseconds)","Distance (cm)","Lateral displacement (cm)"]])
     # Find rows that match on all specified columns
         row['area']=mean_signal_area
@@ -458,7 +519,8 @@ for pulse in pulses:
            log_df.to_csv(log_file, index=False)
         else:
            #print("row not found")
-           row_copy.to_csv(log_file, index=False)
+           # row_copy.to_csv(log_file, index=False)
+           pass
 
 # extracting fit parameters for exponential fit
 # Initial guess for parameters (a, b, c) - can be adjusted
@@ -466,11 +528,6 @@ initial_guess = [1.0, -0.5, 0.0]
 # Perform the curve fit
 # Create a NumPy array with NaN values
 # Create a boolean mask where True indicates a NaN
-print("DOSES, SIGNAL AREAS, PULSE TRACKER")
-print(doses)
-print(mean_signal_areas)
-print(pulse_tracker)
-print("------")
 nan_mask_doses = np.isnan(doses)
 # Invert the mask to select non-NaN values
 non_nan_mask_doses = ~nan_mask_doses
@@ -509,10 +566,8 @@ except:
 # Plot the original data and the fitted curve
 
 
-print("mean_signal_areas ", mean_signal_areas," doses ", doses)
 peaks_df = pd.DataFrame({'npeaks': npeaks_list, 'filenames': corresponding_files, 'pulse_widths': pulse_widths})
 peaks_df.to_csv('peaks_df.csv', index=False)
-print("mean_signal_peaks ", mean_signal_peaks," doses ", doses)
 plt.figure(figsize=(10, 6))
 color_list = ["black","blue","green"]
 init_pulse = pulse_tracker[0]
@@ -524,13 +579,7 @@ for i in range(0,len(pulse_tracker)):
 split_pulses = np.split(pulse_tracker,split_idx,axis=0)
 split_doses = np.split(doses_clean,split_idx,axis=0)
 split_mean_signal_areas = np.split(mean_signal_areas_clean,split_idx,axis=0)
-print("~~~ ALL SPLIT ~~~")
-print(split_pulses)
-print(split_doses)
-print(split_mean_signal_areas)
-print("~~~~~~~~~~~~~~~~~")
 for i in range(0,len(split_pulses)-1):
-    print(i)
     plt.scatter(split_doses[i], split_mean_signal_areas[i], label=split_pulses[i][0], color=color_list[i], alpha=0.6)
     # add in generating a linear fit for each pulse width plot 
     try:
@@ -546,7 +595,7 @@ plt.ylabel("Area")
 plt.title(f"Dose vs Area")
 plt.legend()
 plt.grid()
-plt.show()
+plt.show()'''
 
-
-
+range_dict = {"0.1":[699,np.inf],"0.5":[217,np.inf],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
+cleanup_files("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/plot-dose-2025-07-30/Beam=Electrons 85V-Z=60-HV=0",range_dict)
