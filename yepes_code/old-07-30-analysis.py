@@ -99,31 +99,36 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, s
     # outlier_top = (signal_range*0.95)+signal_min
     # outlier_bottom = (signal_range*0.05)+signal_min
 
-    threshold = 0.2 * signal_range
+    threshold = 0.30 * signal_range
     # Find indices where fluctuation exceeds the threshold
     fluctuation_indices = []
+    currmin = signal_max
+    currmin_i = 0
     for i in range(1, len(signal)):
-        '''if ((signal[i] > outlier_top) or (signal[i] < outlier_bottom)):
-            del signal[i]
-            continue'''
-        if abs(signal[i] - signal[i-1]) > threshold:
+        req_width = 10
+        if abs(signal[i] - signal[i-req_width]) > threshold:
             fluctuation_indices.append(i)
+            if (signal[i] < currmin):
+                currmin = signal[i]
+                currmin_i = len(fluctuation_indices)-1
 
     # Identify the start of fluctuations
     if len(fluctuation_indices) > 1:
-        if pulse <= 1:
-            start_of_fluctuations = fluctuation_indices[0]
-            end_of_fluctuations = fluctuation_indices[-1]
-            print(f"Signal starts fluctuating beyond 5% of max range at index {start_of_fluctuations}")
-            print(f"Signal starts fluctuating beyond 5% of max range at index {end_of_fluctuations}")
-        else:
+        # if pulse <= 1:
+        start_of_fluctuations = fluctuation_indices[0]
+        if start_of_fluctuations <= 10:
+            fluctuation_indices = fluctuation_indices[1]
+        end_of_fluctuations = fluctuation_indices[-1]
+        print(f"Signal starts fluctuating beyond 5% of max range at index {start_of_fluctuations}")
+        print(f"Signal starts fluctuating beyond 5% of max range at index {end_of_fluctuations}")
+        '''else:
             fluctuation_indices.sort(reverse=True)
             if fluctuation_indices[0] > fluctuation_indices[1]:
-                end_of_fluctuations = fluctuation_indices[0]
-                start_of_fluctuations = fluctuation_indices[1]
+                end_of_fluctuations = fluctuation_indices[3]
+                start_of_fluctuations = fluctuation_indices[2]
             else:
-                end_of_fluctuations = fluctuation_indices[1]
-                start_of_fluctuations = fluctuation_indices[0]
+                end_of_fluctuations = fluctuation_indices[2]
+                start_of_fluctuations = fluctuation_indices[3]'''
     else:
         print("No significant fluctuation found.")
         start_of_fluctuations = 0
@@ -186,7 +191,9 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, s
     shift_points = int(0.2e-6 / time_step)  # Number of points to shift earlier
     shifted_start_index = max(0, start_index)  # Ensure index is not negative  - shift_points
     if pulse >= 1:
-        shifted_end_index = max(0, end_index_back) #  - shift_points
+        print("pulse over 1")
+        shifted_start_index = fluctuation_indices[0]
+        shifted_end_index = min(len(time) - 1, shifted_start_index + 3 * shift_points + int(pulse * 1e-6 / time_step))
     else:
         shifted_end_index = min(len(time) - 1, shifted_start_index + 3 * shift_points + int(pulse * 1e-6 / time_step))
 
@@ -289,16 +296,16 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, s
         plt.legend()
         plt.grid()
 
-        graphicDir=f"plot-dose-2025-07-30/Beam={beam}-Z={Z}-HV={HV}"
+        graphicDir=f"new-plot-dose-2025-07-30/Beam={beam}-Z={Z}-HV={HV}"
         if not os.path.exists(graphicDir):
             os.makedirs(graphicDir)
             print(f"Directory created: {graphicDir}")
         else:
             print(f"Directory already exists: {graphicDir}")
         
-        graphicFile=f"{graphicDir}/dose-calc-pulse={pulse}-{ifile}-ch1.jpg"
+        graphicFile=f"{graphicDir}/dose-calc-pulse={pulse}-{ifile}-ch2.jpg"
         if verbose>2: print("graphicFile ", graphicFile)
-        plt.savefig(graphicFile, format="jpeg", dpi=300)  
+        plt.savefig(graphicFile, format="jpeg", dpi=300)
         if showPlot:
             plt.show()
         plt.close()
@@ -322,6 +329,67 @@ def cleanup_files(directory_name, range_dict):
             if (int(entry_val) < range_dict[pulse][0]) or (int(entry_val) > range_dict[pulse][1]):
                 os.remove(full_path)
     return
+
+def straight_line_across(time_data, channel_data, drop_idx, signal_range):
+    print("straight line across")
+    print("drop idx, signal range")
+    print(drop_idx, signal_range)
+    concat_channel_data = channel_data[drop_idx+100:]
+    print(concat_channel_data)
+    indices = [i for i, x in enumerate(concat_channel_data) if x >= channel_data[drop_idx]]
+    prev = 0
+    for idx in indices:
+        if (idx - prev) > 300:
+            break
+    print(idx)
+    concat_channel_data = concat_channel_data[idx:]
+    concat_indices = [i for i, x in enumerate(concat_channel_data) if x == drop_idx]
+    return (drop_idx + idx + concat_indices[0])
+
+def plot_dose_vs_area(log_file,group_col="Pulse"):
+    log_df = pd.read_csv(log_file)
+    grouped_data = log_df.groupby(group_col)
+    color_list = ["red","black","blue","green","yellow","purple","brown"]
+    pulse_list = ["0.1","0.5","1","2","3"]
+    dose = log_df["Dose"]
+    area = log_df["area"]
+    peaks = log_df["peaks"]
+    pulse = log_df["Pulse"]
+    # Create a boolean mask where True indicates a NaN
+    nan_mask_area = np.isnan(area)
+    # Invert the mask to select non-NaN values
+    non_nan_mask_area = ~nan_mask_area
+    # Use boolean indexing to get the array without NaNs
+    area_clean = np.array(area)[non_nan_mask_area]
+    dose_clean = np.array(dose)[non_nan_mask_area]
+    pulse_clean = np.array(pulse)[non_nan_mask_area]
+    split_idx = []
+    init_pulse = pulse_clean[0]
+    for i in range(0,len(pulse_clean)):
+        if (pulse_clean[i] != init_pulse):
+            split_idx.append(i)
+            init_pulse = pulse_clean[i]
+    split_pulses = np.split(pulse_clean,split_idx,axis=0)
+    split_doses = np.split(dose_clean,split_idx,axis=0)
+    split_areas = np.split(area_clean,split_idx,axis=0)
+    for i in range(0,len(split_pulses)-1):
+        plt.figure(figsize=(10, 6))
+        for i in range(0,len(pulse_list)-1):
+            plt.scatter(split_doses[i], split_areas[i], label=split_pulses[i][0], color=color_list[i], alpha=0.6)
+            # add in generating a linear fit for each pulse width plot 
+            '''try:
+                m, b = np.polyfit(split_doses[i], split_areas[i], 1)
+                plt.plot(split_doses[i], m*split_doses[i] + b, color=color_list[i], label=f'Linear Fit: {split_pulses[i][0]:.2f}')
+            except:
+                pass'''
+    plt.xlabel("Dose")
+    plt.ylabel("Area")
+    plt.title("Dose vs Area, Grouped By Pulse")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
         
 #==============================================================================
 def generate_baseline(log_file, selected_pulse=0.1, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1"):
@@ -407,7 +475,7 @@ def generate_baseline(log_file, selected_pulse=0.1, Z=60, HV=0, beam="Electrons 
     return signal_area, nPeaks
 
 
-log_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/lgad-2025-07-30-log.csv"
+log_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/07-30-clipped.csv"
 if not os.path.exists(log_file):
     print(f"log file {log_file} not found")
     exit()
@@ -436,8 +504,8 @@ mean_signal_areas=[]
 mean_signal_peaks=[]
 doses=[]
 pulse_tracker = []
-
-'''verbose=1
+'''
+verbose=1
 for pulse in pulses:
     matching_rows = log_df[
         (log_df["Detector"] == Detector) &
@@ -470,8 +538,6 @@ for pulse in pulses:
             file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", file_min)
             file_path = row["FileMin"].replace(f"{file_min_num:04}",f"{i:04}")
             file_path = file_path.replace("/home/lgad/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
-            print("after file_path ", file_path)
-            print("i",i)
             if not os.path.exists(file_path):
                file_path = file_path.replace("CH1","CH2")
                if not os.path.exists(file_path):
@@ -480,7 +546,7 @@ for pulse in pulses:
             
             #signal_area, signal_peak=get_area(file_path, pulse=pulse,Z=Z,X=X, ifile=i)
             try:
-                signal_area, signal_peak=get_area(file_path, pulse=pulse,ifile=i, selected_channel="CH1")
+                signal_area, signal_peak=get_area(file_path, pulse=pulse,ifile=i, selected_channel="CH2")
             except:
                 break
             signal_areas.append(signal_area)
@@ -595,7 +661,9 @@ plt.ylabel("Area")
 plt.title(f"Dose vs Area")
 plt.legend()
 plt.grid()
-plt.show()'''
+plt.show()
 
-range_dict = {"0.1":[699,np.inf],"0.5":[217,np.inf],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
-cleanup_files("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/plot-dose-2025-07-30/Beam=Electrons 85V-Z=60-HV=0",range_dict)
+range_dict = {"0.1":[699,np.inf],"0.5":[551, 1105],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
+cleanup_files("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/Beam=Electrons 85V-Z=60-HV=0",range_dict)
+'''
+plot_dose_vs_area(log_file,group_col="Pulse")
