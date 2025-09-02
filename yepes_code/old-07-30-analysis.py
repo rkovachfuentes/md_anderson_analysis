@@ -193,9 +193,13 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, s
     if pulse >= 1:
         print("pulse over 1")
         shifted_start_index = fluctuation_indices[0]
-        shifted_end_index = min(len(time) - 1, shifted_start_index + 3 * shift_points + int(pulse * 1e-6 / time_step))
+        print("shifted start index")
+        print(shifted_start_index)
+        # shifted_end_index = min(len(time) - 1, shifted_start_index + 3 * shift_points + int(pulse * 1e-6 / time_step))
+        shifted_end_index = straight_line_across(time, signal, shifted_start_index, signal_range)
     else:
-        shifted_end_index = min(len(time) - 1, shifted_start_index + 3 * shift_points + int(pulse * 1e-6 / time_step))
+        # shifted_end_index = min(len(time) - 1, shifted_start_index + 3 * shift_points + int(pulse * 1e-6 / time_step))
+        shifted_end_index = straight_line_across(time, signal, shifted_start_index, signal_range)
 
     # Determine the region to remove
     remove_start_index = shifted_start_index
@@ -296,7 +300,8 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, s
         plt.legend()
         plt.grid()
 
-        graphicDir=f"new-plot-dose-2025-07-30/Beam={beam}-Z={Z}-HV={HV}"
+        # graphicDir=f"new-plot-dose-2025-07-30/Beam={beam}-Z={Z}-HV={HV}"
+        graphicDir = f"new-plot-dose-2025-07-30/testing-area"
         if not os.path.exists(graphicDir):
             os.makedirs(graphicDir)
             print(f"Directory created: {graphicDir}")
@@ -332,19 +337,19 @@ def cleanup_files(directory_name, range_dict):
 
 def straight_line_across(time_data, channel_data, drop_idx, signal_range):
     print("straight line across")
-    print("drop idx, signal range")
-    print(drop_idx, signal_range)
-    concat_channel_data = channel_data[drop_idx+100:]
+    concat_channel_data = channel_data[(drop_idx):]
+    drop_value = channel_data[drop_idx]
+    print("drop value", drop_value)
     print(concat_channel_data)
-    indices = [i for i, x in enumerate(concat_channel_data) if x >= channel_data[drop_idx]]
+    indices = [i for i, x in enumerate(concat_channel_data) if x >= drop_value]
     prev = 0
     for idx in indices:
-        if (idx - prev) > 300:
+        if (idx - prev) > 100:
             break
-    print(idx)
-    concat_channel_data = concat_channel_data[idx:]
-    concat_indices = [i for i, x in enumerate(concat_channel_data) if x == drop_idx]
-    return (drop_idx + idx + concat_indices[0])
+    print("returning value",channel_data[drop_idx+idx])
+    print("drop idx",drop_idx)
+    print("returning idx", drop_idx+idx)
+    return (drop_idx+idx)
 
 def plot_dose_vs_area(log_file,group_col="Pulse"):
     log_df = pd.read_csv(log_file)
@@ -504,6 +509,10 @@ mean_signal_areas=[]
 mean_signal_peaks=[]
 doses=[]
 pulse_tracker = []
+
+showPlot = True
+var1, var2 = get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-07-30/scope-results-2025-07-30-0849.csv",pulse=3,selected_channel="CH1")
+
 '''
 verbose=1
 for pulse in pulses:
@@ -665,5 +674,5 @@ plt.show()
 
 range_dict = {"0.1":[699,np.inf],"0.5":[551, 1105],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
 cleanup_files("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/Beam=Electrons 85V-Z=60-HV=0",range_dict)
-'''
-plot_dose_vs_area(log_file,group_col="Pulse")
+
+plot_dose_vs_area(log_file,group_col="Pulse")'''
