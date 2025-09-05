@@ -74,7 +74,7 @@ def read_csv(file_path_init, selected_channel="CH1"):
 #==================================================================================================
 #
 #==================================================================================================
-def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1" ):
+def get_area(file_path, range_dict, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1"  ):
     time, signal = read_csv(file_path, selected_channel)
     # remove any signal less than 0
     if signal.size == 0:
@@ -84,6 +84,7 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, s
     time_step = time[1] - time[0]  # Time difference between consecutive points
     lookback_points = int(0.3e-6 / time_step)  # Number of points in 0.1 microseconds
     w = savgol_filter(signal, 701, 2)
+    print(w)
     # outlier_indices = np.where(signal > 0)
     # signal = signal.remove(outlier_indices[0])
 
@@ -92,26 +93,32 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, s
     start_index = 0
     end_index = 0
 
-    signal_min = np.min(signal)
-    signal_max = np.max(signal)
-    signal_range = signal_max-signal_min
-    shifted_min  = signal_min+0.8*signal_range
     # outlier_top = (signal_range*0.95)+signal_min
     # outlier_bottom = (signal_range*0.05)+signal_min
 
-    threshold = 0.30 * signal_range
     # Find indices where fluctuation exceeds the threshold
     fluctuation_indices = []
+    if pulse >= 1:
+        apparent_signal = w
+    else:
+        apparent_signal = signal
+    signal_min = np.min(apparent_signal)
+    signal_max = np.max(apparent_signal)
+    signal_range = signal_max-signal_min
+    shifted_min  = signal_min+0.8*signal_range
+    threshold = 0.30 * signal_range
     currmin = signal_max
     currmin_i = 0
-    for i in range(1, len(signal)):
+    print("apparent signal",apparent_signal)
+    print("threshold", threshold)
+    for i in range(5, len(apparent_signal)):
         req_width = 10
-        if abs(signal[i] - signal[i-req_width]) > threshold:
+        if abs(apparent_signal[i] - apparent_signal[i-5]) > threshold:
             fluctuation_indices.append(i)
-            if (signal[i] < currmin):
-                currmin = signal[i]
+            if (apparent_signal[i] < currmin):
+                currmin = apparent_signal[i]
                 currmin_i = len(fluctuation_indices)-1
-
+    print("fluctuation indices",fluctuation_indices)
     # Identify the start of fluctuations
     if len(fluctuation_indices) > 1:
         # if pulse <= 1:
@@ -192,11 +199,21 @@ def get_area(file_path, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, s
     shifted_start_index = max(0, start_index)  # Ensure index is not negative  - shift_points
     if pulse >= 1:
         print("pulse over 1")
-        shifted_start_index = fluctuation_indices[0]
-        print("shifted start index")
+        # shifted_start_index = fluctuation_indices[0]
+        print("shifted start index") 
         print(shifted_start_index)
         # shifted_end_index = min(len(time) - 1, shifted_start_index + 3 * shift_points + int(pulse * 1e-6 / time_step))
         shifted_end_index = straight_line_across(time, signal, shifted_start_index, signal_range)
+        if ((shifted_end_index - shifted_start_index) <= 100):
+            too_narrow = True
+            counter = 1
+            while too_narrow:
+                new_end = straight_line_across(time, signal, shifted_end_index, signal_range)
+                shifted_start_index = shifted_end_index
+                shifted_end_index = new_end
+                counter += 1
+                if (((shifted_end_index - shifted_start_index) >= 100) or (counter > 10)):
+                    too_narrow = False
     else:
         # shifted_end_index = min(len(time) - 1, shifted_start_index + 3 * shift_points + int(pulse * 1e-6 / time_step))
         shifted_end_index = straight_line_across(time, signal, shifted_start_index, signal_range)
@@ -351,8 +368,26 @@ def straight_line_across(time_data, channel_data, drop_idx, signal_range):
     print("returning idx", drop_idx+idx)
     return (drop_idx+idx)
 
+def separate_comment(log_file):
+    log_df = pd.read_csv(log_file)
+    comments_new = []
+    Detector = "BNL"
+    matching_rows = log_df[(log_df["Detector"] == Detector)]
+    for comment in log_df["Comment"]:
+        comment_clean = comment.replace(", chamber in", "")
+        comment_clean = comment.replace("5 cm collimator, HV ","")
+        split_comment = comment_clean.split(",")
+        comments_new.append(split_comment[0].replace(" V",""))
+    log_df["Comment"] = comments_new
+    log_df.rename(columns={'Comment': 'HV (V)'})
+    log_df.to_csv(log_file, index=False)
+    return
+
+
 def plot_dose_vs_area(log_file,group_col="Pulse"):
     log_df = pd.read_csv(log_file)
+    log_df = log_df[log_df['Comment'] == 50]
+    print(log_df.head())
     grouped_data = log_df.groupby(group_col)
     color_list = ["red","black","blue","green","yellow","purple","brown"]
     pulse_list = ["0.1","0.5","1","2","3"]
@@ -365,9 +400,10 @@ def plot_dose_vs_area(log_file,group_col="Pulse"):
     # Invert the mask to select non-NaN values
     non_nan_mask_area = ~nan_mask_area
     # Use boolean indexing to get the array without NaNs
-    area_clean = np.array(area)[non_nan_mask_area]
-    dose_clean = np.array(dose)[non_nan_mask_area]
-    pulse_clean = np.array(pulse)[non_nan_mask_area]
+    print(pulse)
+    area_clean = np.array(area)
+    dose_clean = np.array(dose)
+    pulse_clean = np.array(pulse)
     split_idx = []
     init_pulse = pulse_clean[0]
     for i in range(0,len(pulse_clean)):
@@ -381,19 +417,60 @@ def plot_dose_vs_area(log_file,group_col="Pulse"):
         plt.figure(figsize=(10, 6))
         for i in range(0,len(pulse_list)-1):
             plt.scatter(split_doses[i], split_areas[i], label=split_pulses[i][0], color=color_list[i], alpha=0.6)
+            # plt.plot(split_doses[i], split_areas[i], label=split_pulses[i][0], color=color_list[i])
             # add in generating a linear fit for each pulse width plot 
-            '''try:
-                m, b = np.polyfit(split_doses[i], split_areas[i], 1)
-                plt.plot(split_doses[i], m*split_doses[i] + b, color=color_list[i], label=f'Linear Fit: {split_pulses[i][0]:.2f}')
-            except:
-                pass'''
     plt.xlabel("Dose")
     plt.ylabel("Area")
-    plt.title("Dose vs Area, Grouped By Pulse")
+    plt.title("Ch1 Mean Dose vs Area at 50 HV, All Distances, Grouped By Pulse")
     plt.legend()
     plt.grid()
     plt.show()
 
+def plot_area_vs_distance(log_file):
+    log_df = pd.read_csv(log_file)
+    log_df = log_df[log_df['Comment'] == 50]
+    print(log_df.head())
+    color_list = ["red","black","blue","green","yellow","purple","brown"]
+    pulse_list = ["0.1","0.5","1","2","3"]
+    dose = log_df["Z"]
+    area = log_df["area"]
+    peaks = log_df["peaks"]
+    pulse = log_df["Pulse"]
+    # Create a boolean mask where True indicates a NaN
+    nan_mask_area = np.isnan(area)
+    # Invert the mask to select non-NaN values
+    non_nan_mask_area = ~nan_mask_area
+    # Use boolean indexing to get the array without NaNs
+    print(pulse)
+    area_clean = np.array(area)
+    dose_clean = np.array(dose)
+    pulse_clean = np.array(pulse)
+    split_idx = []
+    init_pulse = pulse_clean[0]
+    for i in range(0,len(pulse_clean)):
+        if (pulse_clean[i] != init_pulse):
+            split_idx.append(i)
+            init_pulse = pulse_clean[i]
+    split_pulses = np.split(pulse_clean,split_idx,axis=0)
+    split_doses = np.split(dose_clean,split_idx,axis=0)
+    split_areas = np.split(area_clean,split_idx,axis=0)
+    for i in range(0,len(split_pulses)-1):
+        plt.figure(figsize=(10, 6))
+        for i in range(0,len(pulse_list)-1):
+            plt.scatter(split_doses[i], split_areas[i], label=split_pulses[i][0], color=color_list[i], alpha=0.6)
+            try:
+                m, b = np.polyfit(split_doses[i], split_areas[i], 1)
+                plt.plot(split_doses[i], m*split_doses[i] + b, color=color_list[i], label=f'Linear Fit: {split_pulses[i][0]:.2f}')
+            except:
+                pass
+            # plt.plot(split_doses[i], split_areas[i], label=split_pulses[i][0], color=color_list[i])
+            # add in generating a linear fit for each pulse width plot 
+    plt.xlabel("Distance (cm)")
+    plt.ylabel("Area")
+    plt.title(f"Area vs Distance at 50 HV, Grouped by Pulse")
+    plt.legend()
+    plt.grid()
+    plt.show()
 
         
 #==============================================================================
@@ -423,6 +500,8 @@ def generate_baseline(log_file, selected_pulse=0.1, Z=60, HV=0, beam="Electrons 
             signal_areas = []
             signal_peaks = []
             for i in range(file_min_num, file_max_num + 1):
+                if (int(i) < range_dict[pulse][0]) or (int(entry_val) > range_dict[pulse][1]):
+                    continue
                 #if not i== 1422: continue
                 file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", file_min)
                 file_path = file_path.replace("/home/pyepes/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
@@ -485,7 +564,9 @@ if not os.path.exists(log_file):
     print(f"log file {log_file} not found")
     exit()
 
-log_df = pd.read_csv(log_file)
+
+
+'''log_df = pd.read_csv(log_file)
 npeaks_list = []
 corresponding_files = []
 pulse_widths = []
@@ -504,16 +585,16 @@ verbose=0
 
 pulses=[1]
 pulses=[0.1,0.5,1,2,3]
+range_dict = {"0.1":[699,np.inf],"0.5":[551, 1105],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
 
 mean_signal_areas=[]
 mean_signal_peaks=[]
 doses=[]
 pulse_tracker = []
 
-showPlot = True
-var1, var2 = get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-07-30/scope-results-2025-07-30-0849.csv",pulse=3,selected_channel="CH1")
+showPlot = False
+# var1, var2 = get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-07-30/scope-results-2025-07-30-0849.csv",pulse=3,selected_channel="CH1")
 
-'''
 verbose=1
 for pulse in pulses:
     matching_rows = log_df[
@@ -525,7 +606,7 @@ for pulse in pulses:
         # (log_df["Shielding or not"] == Shield) & 
         # (log_df["HV"] == HV) & 
         # (log_df["LV"] == LV) & 
-     #  (log_df["Comment"] == Comment) & 
+        # (log_df["Comment"] == Comment) & 
         (log_df["Pulse"] == pulse)
     ]
     if verbose>1:
@@ -540,8 +621,10 @@ for pulse in pulses:
         file_max_num = int(file_max_num.replace(".csv",""))
 
         dose = row['Dose']
-        signal_areas = []
-        signal_peaks = []
+        ch1_signal_areas = []
+        ch1_signal_peaks = []
+        ch2_signal_areas = []
+        ch2_signal_peaks = []
         for i in range(file_min_num, file_max_num + 1):
             #if not i== 1422: continue
             file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", file_min)
@@ -555,28 +638,37 @@ for pulse in pulses:
             
             #signal_area, signal_peak=get_area(file_path, pulse=pulse,Z=Z,X=X, ifile=i)
             try:
-                signal_area, signal_peak=get_area(file_path, pulse=pulse,ifile=i, selected_channel="CH2")
+                ch1_signal_area, ch1_signal_peak=get_area(file_path, range_dict, pulse=pulse,ifile=i, selected_channel="CH1")
+                ch2_signal_area, ch2_signal_peak = get_area(file_path, range_dict, pulse=pulse,ifile=i, selected_channel="CH2")
             except:
                 break
-            signal_areas.append(signal_area)
-            signal_peaks.append(signal_peak)
+            ch1_signal_areas.append(ch1_signal_area)
+            ch2_signal_areas.append(ch2_signal_area)
+            ch1_signal_peaks.append(ch1_signal_peak)
+            ch2_signal_peaks.append(ch2_signal_peak)
             if verbose>-1:
-               print(f"i {i} pulse {pulse} signal_area {signal_area}", )
+               print(f"i {i} pulse {pulse} signal_area {ch1_signal_area}", )
 
-        mean_signal_area = np.mean(signal_areas)
-        mean_signal_peak = np.mean(signal_peaks)
+        ch1_mean_signal_area = np.mean(ch1_signal_areas)
+        ch2_mean_signal_area = np.mean(ch2_signal_areas)
+        ch1_mean_signal_peak = np.mean(ch1_signal_peaks)
+        ch2_mean_signal_peak = np.mean(ch2_signal_peaks)
         if verbose>1:
            print("signal_areas ", signal_areas)
            print(f"Pulse {pulse} Dose {dose} mean signal_area {mean_signal_area} ")
-        mean_signal_areas.append(mean_signal_area)
-        mean_signal_peaks.append(mean_signal_peak)
+        ch1_mean_signal_areas.append(ch1_mean_signal_area)
+        ch2_mean_signal_areas.append(ch2_mean_signal_area)
+        ch1_mean_signal_peaks.append(ch1_mean_signal_peak)
+        ch2_mean_signal_peaks.append(ch2_mean_signal_peak)
         doses.append(dose)
         pulse_tracker.append(pulse)
         matching_columns = ["Detector", "Beam", "Z", "X", "Pulse", "Dose"]
         # matching_rows[["Detector","Recorded Dose (C*10^-8)", "Pulse length (microseconds)","Distance (cm)","Lateral displacement (cm)"]])
     # Find rows that match on all specified columns
-        row['area']=mean_signal_area
-        row['peaks']=mean_signal_peak
+        row['ch1_area']=ch1_mean_signal_area
+        row['ch1_peaks']=ch1_mean_signal_peak
+        row['ch2_area']=ch2_mean_signal_area
+        row['ch2_peaks']=ch2_mean_signal_peak
 
         row_copy = row.copy()  # Prevents modification issues
         # print("row ", row_copy[matching_columns])
@@ -670,9 +762,9 @@ plt.ylabel("Area")
 plt.title(f"Dose vs Area")
 plt.legend()
 plt.grid()
-plt.show()
+# plt.show()
 
-range_dict = {"0.1":[699,np.inf],"0.5":[551, 1105],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
-cleanup_files("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/Beam=Electrons 85V-Z=60-HV=0",range_dict)
 
-plot_dose_vs_area(log_file,group_col="Pulse")'''
+cleanup_files("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/testing-area/",range_dict)'''
+
+plot_area_vs_distance(log_file)
