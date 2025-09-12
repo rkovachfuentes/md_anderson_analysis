@@ -70,10 +70,27 @@ def plot_a_vs_b(log_file, a, b, filter_var, filter_val, group_var, savePlot = Fa
 
     fig, ax = plt.subplots(figsize=(8, 5))
     for group_tuple, val in grouped_mean_multi:
+        initial_grp = group_tuple[0]
+        break
+    print(initial_grp)
+    grp_means = []
+    grp_a = []
+    grp_errs = []
+    for group_tuple, val in grouped_mean_multi:
         if no_3 and (str(group_tuple[0]) == "3.0"):
             break
         else:
-            plt.errorbar(group_tuple[1], val[b].mean(), yerr=val[b].std(), color=color_dict[str(group_tuple[0])], fmt='-^')
+            if group_tuple[0] == initial_grp:
+                grp_means.append(val[b].mean())
+                grp_errs.append(val[b].std())
+                grp_a.append(group_tuple[1])
+            else:
+                plt.errorbar(grp_a, grp_means, yerr=grp_errs, color=color_dict[str(initial_grp)], label=f"{initial_grp} us", fmt='-o')
+                grp_means = []
+                grp_a = []
+                grp_errs = []
+                initial_grp = group_tuple[0]
+                print(initial_grp)
 
     ax.set_title(f"{a} vs Mean {b}, Grouped By {group_var}, HV={filter_val}")
     ax.set_xlabel(f"{a}")
@@ -103,7 +120,7 @@ def plot_a_vs_b_both_mean(log_file, a, b, filter_var, filter_val, group_var, sav
         if no_3 and (str(group[0]) == "3.0"):
             break
         ax.errorbar(val[a].mean(), val[b].mean(), xerr=val[a].std(), yerr=val[b].std(), color=color_dict[str(group[0])], fmt='-^')
-    ax.set_title(f"{a} vs Mean {b}, Grouped By {group_var}, HV={filter_val}")
+    ax.set_title(f"Mean {a} vs Mean {b}, Grouped By {group_var}, HV={filter_val}")
     ax.set_xlabel(f"{a}")
     ax.set_ylabel(f"{b}")
     plt.show()
@@ -111,7 +128,7 @@ def plot_a_vs_b_both_mean(log_file, a, b, filter_var, filter_val, group_var, sav
     return
 
 # percent_diff_removed("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/Beam=Electrons 85V-Z=60-HV=0","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/all_files")
-plot_a_vs_b("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv", "Z", "Dose", "HV", 50, "Pulse", savePlot=False, no_3 = True)
-plot_a_vs_b_both_mean("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv", "ch1_area", "ch2_area", "HV", 50, "Pulse", savePlot=False, no_3 = True)
+plot_a_vs_b("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv", "Z", "ch2_area", "HV", 50, "Pulse", savePlot=False, no_3 = False)
+# plot_a_vs_b_both_mean("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv", "ch1_peaks", "ch2_peaks", "HV", 20, "Pulse", savePlot=False, no_3 = True)
 
 # filter_small_values(output_file, lower_limits, "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv")
