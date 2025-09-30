@@ -100,7 +100,38 @@ def plot_a_vs_b(log_file, a, b, filter_var, filter_val, group_var, savePlot = Fa
     
     return
 
-def plot_a_vs_b_both_mean(log_file, a, b, filter_var, filter_val, group_var, savePlot = False, no_3 = False):
+def plot_a_vs_b_fixed_Z(log_file, a, b, a_unit, b_unit, Z_value, filter_var, filter_val, group_var, savePlot = False, no_3 = False):
+    log_df = pd.read_csv(log_file)
+    log_df = log_df[[a, b, filter_var, group_var, "Z"]]
+    log_df = log_df[log_df[filter_var] == filter_val]
+    log_df = log_df[log_df["Z"] == Z_value]
+    log_df = log_df.drop(filter_var, axis=1)
+    log_df = log_df.drop("Z", axis=1)
+    print(log_df.head())
+    color_dict = {"0.1":"red","0.5":"black","1.0":"blue","2.0":"green","3.0":"yellow"}
+    pulse_list = ["0.1","0.5","1","2","3"]
+    grouped_mean_multi = log_df.groupby([group_var])
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for group_tuple, val in grouped_mean_multi:
+        initial_grp = group_tuple[0]
+        break
+    grp_means = []
+    grp_a = []
+    grp_errs = []
+    for group_tuple, val in grouped_mean_multi:
+        if no_3 and (group_tuple[0] == 3):
+            break
+        plt.errorbar(val[a].mean(), val[b].mean(), yerr=val[b].std(), xerr = val[a].std(), color=color_dict[str(group_tuple[0])], label=f"{group_tuple[0]} us", fmt='-o')
+        initial_grp = group_tuple[0]
+
+    ax.set_title(f"{a} vs Mean {b}, Grouped By {group_var}, {filter_var}={filter_val} Z=50")
+    ax.set_xlabel(f"{a}, {a_unit}")
+    ax.set_ylabel(f"{b}, {b_unit}")
+    ax.legend(loc='upper left')
+    plt.show()
+    return
+
+def plot_a_vs_b_both_mean(log_file, a, b, a_unit, b_unit, filter_var, filter_val, group_var, savePlot = False, no_3 = False):
     log_df = pd.read_csv(log_file)
     log_df = log_df[[a, b, filter_var, group_var]]
     log_df = log_df[log_df[filter_var] == filter_val]
@@ -108,11 +139,9 @@ def plot_a_vs_b_both_mean(log_file, a, b, filter_var, filter_val, group_var, sav
     print(log_df.head())
     color_dict = {"0.1":"red","0.5":"black","1.0":"blue","2.0":"green","3.0":"yellow"}
     pulse_list = ["0.1","0.5","1","2","3"]
-
     grouped_mean_multi = log_df.groupby([group_var])
     print(grouped_mean_multi.head())
     print(grouped_mean_multi)
-
     fig, ax = plt.subplots(figsize=(8, 5))
     for group, val in grouped_mean_multi:
         print(group)
@@ -120,15 +149,15 @@ def plot_a_vs_b_both_mean(log_file, a, b, filter_var, filter_val, group_var, sav
         if no_3 and (str(group[0]) == "3.0"):
             break
         ax.errorbar(val[a].mean(), val[b].mean(), xerr=val[a].std(), yerr=val[b].std(), color=color_dict[str(group[0])], fmt='-^')
-    ax.set_title(f"Mean {a} vs Mean {b}, Grouped By {group_var}, HV={filter_val}")
+    ax.set_title(f"Mean {a} ({a_unit}) vs Mean {b} ({b_unit}), Grouped By {group_var}, {filter_var}={filter_val}")
     ax.set_xlabel(f"{a}")
     ax.set_ylabel(f"{b}")
     plt.show()
     
     return
+# log_file, a, b, a_unit, b_unit, filter_var, filter_val, group_var, savePlot = False, no_3 = False
+plot_a_vs_b_fixed_Z("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv", "Dose", "ch2_area", "C*10^-8", "dimensionless", 50, "HV", 50, "Pulse", savePlot=False, no_3 = True)
 
 # percent_diff_removed("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/Beam=Electrons 85V-Z=60-HV=0","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/all_files")
-plot_a_vs_b("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv", "Z", "ch2_area", "HV", 50, "Pulse", savePlot=False, no_3 = False)
 # plot_a_vs_b_both_mean("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv", "ch1_peaks", "ch2_peaks", "HV", 20, "Pulse", savePlot=False, no_3 = True)
-
 # filter_small_values(output_file, lower_limits, "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv")
