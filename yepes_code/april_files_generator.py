@@ -76,6 +76,7 @@ def read_csv(file_path_init, selected_channel="CH1"):
 #==================================================================================================
 def get_area(file_path, range_dict, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1" ):
     time, signal = read_csv(file_path, selected_channel)
+    print("getting area")
     # remove any signal less than 0
     if signal.size == 0:
         print("ZERO SIGNAL")
@@ -287,16 +288,15 @@ def get_area(file_path, range_dict, pulse=2, Z=60, HV=0, beam="Electrons 85V", i
         plt.text(
             0.6 * max(time),  # X-coordinate (adjust based on your plot range)
             min(signal)+0.05 * (max(signal)-min(signal)),  # Y-coordinate (adjust based on your plot range)
-            f"Signal Area: {signal_area:.3e}",  # Text for the label
-            fontsize=12,
-            #color="purple",
+            f"Signal Area: {signal_area:.3e}\nPulse: {pulse}\nZ: \nHV: ",  # Text for the label
+            fontsize=10,
             bbox=dict(facecolor='white', alpha=0.7, edgecolor='purple')  # Optional styling
         )
         
         plt.legend()
         plt.grid()
 
-        graphicDir = f"new-plot-dose-2025-07-30/all_files"
+        graphicDir = f"new-plot-dose-2025-05-06/testing_area"
         if not os.path.exists(graphicDir):
             os.makedirs(graphicDir)
             print(f"Directory created: {graphicDir}")
@@ -350,13 +350,21 @@ def separate_comment(log_file):
     comments_new = []
     Detector = "BNL"
     matching_rows = log_df[(log_df["Detector"] == Detector)]
-    for comment in log_df["Comment"]:
-        comment_clean = comment.replace(", chamber in", "")
-        comment_clean = comment.replace("5 cm collimator, HV ","")
-        split_comment = comment_clean.split(",")
-        comments_new.append(split_comment[0].replace(" V",""))
+    '''for comment in log_df["Comment"]:
+        comment_clean = comment.replace("HV ", "")
+        voltage = comment_clean[:2]
+        if ("V" in voltage):
+            voltage.replace("V", "")
+        if ("," in voltage):
+            voltage.replace(",", "")
+        if (" " in voltage):
+            voltage.replace(" ", "")
+        comments_new.append(voltage)
     log_df["Comment"] = comments_new
-    log_df.rename(columns={'Comment': 'HV (V)'})
+    log_df.rename(columns={'Comment': 'HV (V)'})'''
+    log_df = log_df[(log_df["Comment"] != "0,")]
+    log_df = log_df[(log_df["Comment"] != "5,")]
+    log_df = log_df[(log_df["Comment"] != "Hv")]
     log_df.to_csv(log_file, index=False)
     return
 
@@ -535,15 +543,28 @@ def generate_baseline(log_file, selected_pulse=0.1, Z=60, HV=0, beam="Electrons 
 
     return signal_area, nPeaks
 
+def drop_empties(log_file):
+    log_df = pd.read_csv(log_file)
+    log_df = log_df.dropna(subset=['Dose'])
+    log_df.to_csv(log_file, index=False)
+    return
 
-log_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/07-30-clipped.csv"
+
+log_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/lgad-2025-05-06-log.csv"
 if not os.path.exists(log_file):
     print(f"log file {log_file} not found")
     exit()
 
-
-
+# separate_comment(log_file)
+showPlot = True
 log_df = pd.read_csv(log_file)
+npeaks_list = []
+corresponding_files = []
+pulse_widths = []
+range_dict = {}
+get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-05-06/scope-results-2025-05-06-0268.csv", range_dict, pulse=0.5,ifile=268, selected_channel="CH1")
+
+'''log_df = pd.read_csv(log_file)
 npeaks_list = []
 corresponding_files = []
 pulse_widths = []
@@ -562,7 +583,8 @@ verbose=0
 
 pulses=[1]
 pulses=[0.1,0.5,1,2,3]
-range_dict = {"0.1":[699,np.inf],"0.5":[551, 1105],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
+range_dict = {}
+# range_dict = {"0.1":[699,np.inf],"0.5":[551, 1105],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
 
 ch1_mean_signal_areas=[]
 ch2_mean_signal_areas=[]
@@ -572,7 +594,7 @@ doses=[]
 pulse_tracker = []
 
 showPlot = False
-output_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas.csv"
+output_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/05_06_all_files_and_areas.csv"
 if not os.path.exists(output_file):
     df = pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})
     df = pd.DataFrame(columns=['Detector','Channel','Beam','Pulse','Dose','X','Z','File','ch1_area','ch2_area','ch1_peaks','ch2_peaks'])
@@ -591,9 +613,9 @@ for pulse in pulses:
     for _, row in matching_rows.iterrows():
         file_min = str(row["FileMin"])
         file_max = str(row["FileMax"])
-        file_min_num = file_min.replace("/home/lgad/data/2025-07-30/scope-results-2025-07-30-", "")
+        file_min_num = file_min.replace("/home/lgad/data/2025-05-06/scope-results-2025-05-06-", "")
         file_min_num = int(file_min_num.replace(".csv",""))
-        file_max_num = file_max.replace("/home/lgad/data/2025-07-30/scope-results-2025-07-30-", "")
+        file_max_num = file_max.replace("/home/lgad/data/2025-05-06/scope-results-2025-05-06-", "")
         file_max_num = int(file_max_num.replace(".csv",""))
 
         dose = row['Dose']
@@ -602,11 +624,11 @@ for pulse in pulses:
         ch2_signal_areas = []
         ch2_signal_peaks = []
         for i in range(file_min_num, file_max_num + 1):
-            
             file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", file_min)
             file_path = row["FileMin"].replace(f"{file_min_num:04}",f"{i:04}")
             file_path = file_path.replace("/home/lgad/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
             if not os.path.exists(file_path):
+               print("doesn't exist")
                file_path = file_path.replace("CH1","CH2")
                if not os.path.exists(file_path):
                   print("{file_path} does not exist, skip.")
@@ -614,15 +636,18 @@ for pulse in pulses:
             # check if this file num is in the list of files to ignore
             split_list = file_path.split("-")
             entry_val = split_list[-1].replace(".csv","")
-            if (int(entry_val) < range_dict[str(pulse)][0]) or (int(entry_val) > range_dict[str(pulse)][1]):
-                continue
+            # if (int(entry_val) < range_dict[str(pulse)][0]) or (int(entry_val) > range_dict[str(pulse)][1]):
+            #     continue
             # get area for both ch1 and ch2
             try:
+                print("trying")
                 ch1_signal_area, ch1_signal_peak=get_area(file_path, range_dict, pulse=pulse,ifile=i, selected_channel="CH1")
-                ch2_signal_area, ch2_signal_peak = get_area(file_path, range_dict, pulse=pulse,ifile=i, selected_channel="CH2")
+                print("ch1 area run")
+                ch2_signal_area = 0
+                ch2_signal_peak = 0
             except:
                 break
-            if (ch1_signal_area > 0.0) and (ch2_signal_area > 0.0):
+            if (ch1_signal_area > 0.0):
                 new_row_data = {'Detector': row['Detector'], 'Channel': row['Channel'], 'Beam': row['Beam'], 'Pulse': row['Pulse'], 'Dose': row['Dose'], 'HV': row['Comment'], 'X': row['X'], 'Z': row['Z'], 'File': file_path, 'ch1_area': ch1_signal_area, 'ch2_area': ch2_signal_area, 'ch1_peaks': ch1_signal_peak, 'ch2_peaks': ch2_signal_peak}
                 new_row_df = pd.DataFrame([new_row_data])
                 # Concatenate the DataFrames
@@ -638,12 +663,11 @@ doses_clean = np.array(doses)
 pulse_tracker = np.array(pulse_tracker)
 # pulse_tracker = np.array(pulse_tracker)[non_nan_mask_mean_signal]
 
-'''
 peaks_df = pd.DataFrame({'npeaks': npeaks_list, 'filenames': corresponding_files, 'pulse_widths': pulse_widths})
 peaks_df.to_csv('peaks_df.csv', index=False)
 plt.figure(figsize=(10, 6))
 color_list = ["black","blue","green"]
-init_pulse = pulse_tracker[0]
+init_pulse = 0.1
 split_idx = []
 for i in range(0,len(pulse_tracker)):
     if (pulse_tracker[i] != init_pulse):
@@ -672,9 +696,9 @@ plt.ylabel("Area")
 plt.title(f"Dose vs Area")
 plt.legend()
 plt.grid()
-plt.show()
-'''
+plt.show()'''
 
-cleanup_files("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/testing-area/",range_dict)
 
-plot_area_vs_distance(log_file)
+# cleanup_files("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/testing-area/",range_dict)
+
+# plot_area_vs_distance(log_file)

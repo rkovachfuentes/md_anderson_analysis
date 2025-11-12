@@ -13,6 +13,7 @@ from scipy.signal import peak_widths
 from pathlib import Path
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
+from scipy.signal import ShortTimeFFT
 
 verbose=1
 savePlot=True
@@ -201,6 +202,18 @@ def get_area(file_path, range_dict, pulse=2, Z=60, HV=0, beam="Electrons 85V", i
     remove_start_index = shifted_start_index
     remove_end_index = shifted_end_index
 
+    # count large oscillations in the signal region
+    region_min = signal[remove_start_index:remove_end_index + 1].min()
+    region_max = signal[remove_start_index:remove_end_index + 1].max()
+    region_range = region_max-region_min
+    large_osc_threshold = 0.15*region_range
+    large_oscs = 0
+    for i in range(remove_start_index+10, remove_end_index+10):
+        if abs(w[i] - signal[i]) > large_osc_threshold:
+            large_oscs += 1
+    osc_percentage = large_oscs/(remove_end_index-remove_start_index)
+    print(f"OSC COUNT: {large_oscs}")
+    print(f"LARGE OSC PERCENTAGE: {osc_percentage}")
     # Remove the area by setting the signal to NaN in this region
     signal_removed = np.copy(signal)
     signal_removed[remove_start_index:remove_end_index + 1] = np.nan
@@ -285,15 +298,15 @@ def get_area(file_path, range_dict, pulse=2, Z=60, HV=0, beam="Electrons 85V", i
         plt.ylabel("Signal")
         plt.title("Signal Suppression and Interpolation")
         plt.text(
-            0.6 * max(time),  # X-coordinate (adjust based on your plot range)
+            0.1 * max(time),  # X-coordinate (adjust based on your plot range)
             min(signal)+0.05 * (max(signal)-min(signal)),  # Y-coordinate (adjust based on your plot range)
-            f"Signal Area: {signal_area:.3e}",  # Text for the label
+            f"Signal Area: {signal_area:.3e}\nPulse: {pulse}\nZ: {Z}\nHV: {HV}\nosc_perc: {round(osc_percentage,4)}\nfile: {file_path[-14:-1]}v\nchannel: {selected_channel}",
             fontsize=12,
             #color="purple",
             bbox=dict(facecolor='white', alpha=0.7, edgecolor='purple')  # Optional styling
         )
         
-        plt.legend()
+        # plt.legend()
         plt.grid()
 
         graphicDir = f"new-plot-dose-2025-07-30/all_files"
@@ -309,7 +322,7 @@ def get_area(file_path, range_dict, pulse=2, Z=60, HV=0, beam="Electrons 85V", i
             plt.show()
         plt.close()
 
-    return signal_area, nPeaks
+    return signal_area, nPeaks, osc_percentage
 
 def cleanup_files(directory_name, range_dict):
     if not os.path.exists(directory_name):
@@ -571,11 +584,11 @@ ch2_mean_signal_peaks=[]
 doses=[]
 pulse_tracker = []
 
-showPlot = False
+'''showPlot = False
 output_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas.csv"
 if not os.path.exists(output_file):
     df = pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})
-    df = pd.DataFrame(columns=['Detector','Channel','Beam','Pulse','Dose','X','Z','File','ch1_area','ch2_area','ch1_peaks','ch2_peaks'])
+    df = pd.DataFrame(columns=['Detector','Channel','Beam','Pulse','Dose','X','Z','File','ch1_area','ch2_area','ch1_peaks','ch2_peaks', 'ch1_osc_perc', 'ch2_osc_perc'])
     df.to_csv(output_file)
 output_file_df = pd.read_csv(output_file)
 
@@ -601,6 +614,8 @@ for pulse in pulses:
         ch1_signal_peaks = []
         ch2_signal_areas = []
         ch2_signal_peaks = []
+        ch1_osc_perc = []
+        ch2_osc_perc = []
         for i in range(file_min_num, file_max_num + 1):
             
             file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", file_min)
@@ -618,12 +633,15 @@ for pulse in pulses:
                 continue
             # get area for both ch1 and ch2
             try:
-                ch1_signal_area, ch1_signal_peak=get_area(file_path, range_dict, pulse=pulse,ifile=i, selected_channel="CH1")
-                ch2_signal_area, ch2_signal_peak = get_area(file_path, range_dict, pulse=pulse,ifile=i, selected_channel="CH2")
+                ch1_signal_area, ch1_signal_peak, ch1_osc =get_area(file_path, range_dict, pulse=pulse,ifile=i, selected_channel="CH1")
+                ch2_signal_area, ch2_signal_peak, ch2_osc = get_area(file_path, range_dict, pulse=pulse,ifile=i, selected_channel="CH2")
+                print("oscs:")
+                print(ch1_osc)
+                print(ch2_osc)
             except:
                 break
             if (ch1_signal_area > 0.0) and (ch2_signal_area > 0.0):
-                new_row_data = {'Detector': row['Detector'], 'Channel': row['Channel'], 'Beam': row['Beam'], 'Pulse': row['Pulse'], 'Dose': row['Dose'], 'HV': row['Comment'], 'X': row['X'], 'Z': row['Z'], 'File': file_path, 'ch1_area': ch1_signal_area, 'ch2_area': ch2_signal_area, 'ch1_peaks': ch1_signal_peak, 'ch2_peaks': ch2_signal_peak}
+                new_row_data = {'Detector': row['Detector'], 'Channel': row['Channel'], 'Beam': row['Beam'], 'Pulse': row['Pulse'], 'Dose': row['Dose'], 'HV': row['Comment'], 'X': row['X'], 'Z': row['Z'], 'File': file_path, 'ch1_area': ch1_signal_area, 'ch2_area': ch2_signal_area, 'ch1_peaks': ch1_signal_peak, 'ch2_peaks': ch2_signal_peak, 'ch1_osc_perc': ch1_osc, 'ch2_osc_perc': ch2_osc}
                 new_row_df = pd.DataFrame([new_row_data])
                 # Concatenate the DataFrames
                 output_file_df = pd.concat([output_file_df, new_row_df], ignore_index=True)
@@ -632,10 +650,12 @@ for pulse in pulses:
             else:
                 print("no signal area")
                 continue
+output_file_df = output_file_df.drop_duplicates()
+output_file_df = output_file_df.dropna(subset=['ch1_osc_perc', 'ch1_osc_perc'])
 output_file_df.to_csv(output_file,index=False)
 
 doses_clean = np.array(doses)
-pulse_tracker = np.array(pulse_tracker)
+pulse_tracker = np.array(pulse_tracker)'''
 # pulse_tracker = np.array(pulse_tracker)[non_nan_mask_mean_signal]
 
 '''
@@ -674,7 +694,7 @@ plt.legend()
 plt.grid()
 plt.show()
 '''
-
-cleanup_files("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/testing-area/",range_dict)
-
-plot_area_vs_distance(log_file)
+showPlot = True
+get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-07-30/scope-results-2025-07-30-0848.csv", range_dict, pulse=3, Z=50, HV=10, beam="Electrons 85V", ifile=1560, selected_channel="CH1")
+get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-07-30/scope-results-2025-07-30-0238.csv", range_dict, pulse=2, Z=50, HV=10, beam="Electrons 85V", ifile=1560, selected_channel="CH2")
+get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-07-30/scope-results-2025-07-30-0407.csv", range_dict, pulse=1, Z=30, HV=20, beam="Electrons 85V", ifile=1560, selected_channel="CH1")

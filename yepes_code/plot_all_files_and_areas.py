@@ -68,13 +68,13 @@ def cleanup_output_file(output_file):
     output_file_df.to_csv(output_file)
     return
 
-def plot_a_vs_b(log_file, a, b, a_unit, b_unit, filter_var, filter_val, group_var, savePlot = False, no_3 = False):
+'''def plot_a_vs_b(log_file, a, b, a_unit, b_unit, filter_var, filter_val, group_var, savePlot = False, no_3 = False):
     log_df = pd.read_csv(log_file)
     log_df = log_df[["Beam", a, b, filter_var, group_var]]
-    log_df = log_df[log_df["Beam"] == "Electrons 85V"]
+    # log_df = log_df[log_df["Beam"] == "Electrons 85V"]
     log_df = log_df[log_df[filter_var] == filter_val]
     log_df = log_df.drop(filter_var, axis=1)
-    log_df = log_df.drop("Beam", axis=1)
+    # log_df = log_df.drop("Beam", axis=1)
     print(log_df.head())
     color_dict = {"0.1":"red","0.5":"black","1.0":"blue","2.0":"green","3.0":"yellow"}
     pulse_list = ["0.1","0.5","1","2","3"]
@@ -113,6 +113,78 @@ def plot_a_vs_b(log_file, a, b, a_unit, b_unit, filter_var, filter_val, group_va
     if savePlot:
         plt.savefig(f"plot_graveyard/{a}_vs_{b}_grouped_by_{group_var}_{filter_var}={filter_val}.png")
     
+    return'''
+
+def plot_a_vs_b(log_file, a, b, group_var, filter_dict={None:None}, savePlot = False):
+    log_df = pd.read_csv(log_file)
+    print("unique HVs before slicing")
+    print(log_df["HV"])
+    print(log_df['HV'].unique())
+    df_10 = log_df[(log_df["HV"] == 20)]
+    unit_dict = {"Detector":None, "Channel":None, "Beam":None, "Pulse":"us", "Dose":"C*10^-8", "X":"cm", "Z":"cm", "File":None, "ch1_area":"unitless", "ch2_area": "unitless", "HV":"V", "ch1_osc_count":"counts", "ch2_osc_count":"counts", "ch1_osc_perc":"%", "ch2_osc_perc":"%"}
+    for filter in filter_dict.keys():
+        if filter is None:
+            break
+        else:
+            log_df = log_df[log_df[filter] == filter_dict[filter]]
+    color_dict = {"0.1":"red","0.5":"black","1.0":"blue","2.0":"green","3.0":"yellow"}
+    color_list = ["red","black","blue","green","yellow"]
+    pulse_list = ["0.1","0.5","1","2","3"]
+    grouped_mean_multi = log_df.groupby([group_var, a])
+
+    print("unique HVs after slicing")
+    print(log_df['HV'].unique())
+    df_10 = log_df[(log_df["HV"] == 20)]
+    print(df_10["Z"])
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for group_tuple, val in grouped_mean_multi:
+        initial_grp = group_tuple[0]
+        break
+    grp_means = []
+    grp_a = []
+    grp_errs = []
+    color_idx = 0
+    for group_tuple, val in grouped_mean_multi:
+        print(group_tuple)
+        if group_tuple[0] == initial_grp:
+            grp_means.append(val[b].mean())
+            grp_errs.append(val[b].std())
+            grp_a.append(group_tuple[1])
+        else:
+            plt.errorbar(grp_a, grp_means, yerr=grp_errs, color=color_list[color_idx], label=f"{initial_grp}", fmt='-o')
+            grp_means = []
+            grp_a = []
+            grp_errs = []
+            initial_grp = group_tuple[0]
+            color_idx += 1
+            grp_means.append(val[b].mean())
+            grp_errs.append(val[b].std())
+            grp_a.append(group_tuple[1])
+    plt.errorbar(grp_a, grp_means, yerr=grp_errs, color=color_list[color_idx], label=f"{initial_grp}", fmt='-o')
+    # generate all filter strings
+    filter_keys = list(filter_dict.keys())
+    filter_vals = list(filter_dict.values())
+    filter_str_list = []
+    for i in (0,len(filter_keys)-1):
+        new_str = f"{filter_keys[i]} = {filter_vals[i]}\n"
+        filter_str_list.append(new_str)
+    mega_string = "".join(filter_str_list)
+    ax.set_title(f"{a} vs {b}, Grouped By {group_var} ({unit_dict[group_var]})")
+    plt.text(
+            0.7 * max(log_df[a]),  # X-coordinate (adjust based on your plot range)
+            min(log_df[b])+0.2 * (max(log_df[b])-min(log_df[b])),  # Y-coordinate (adjust based on your plot range)
+            f"Filters:\n{mega_string}",
+            fontsize=10,
+            color="purple",
+            bbox=dict(facecolor='white', alpha=0.7, edgecolor='purple')  # Optional styling
+        )
+    ax.set_xlabel(f"{a} ({unit_dict[a]})")
+    ax.set_ylabel(f"{b} ({unit_dict[b]})")
+    ax.legend()
+    plt.show()
+    if savePlot:
+        plt.savefig(f"plot_graveyard/{a}_vs_{b}_grouped_by_{group_var}_filters.png")
     return
 
 def plot_a_vs_b_fixed_Z(log_file, a, b, a_unit, b_unit, Z_value, filter_var, filter_val, group_var, savePlot = False, no_3 = False):
@@ -171,7 +243,7 @@ def plot_a_vs_b_both_mean(log_file, a, b, a_unit, b_unit, filter_var, filter_val
     
     return
 
-# dropped_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/05_06_all_files_and_areas_dropped.csv"
+'''# dropped_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/05_06_all_files_and_areas_dropped.csv"
 # filter_small_values(output_file, lower_limits, dropped_file)
 file_05 = pd.read_csv("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/05_05_all_files_and_areas_dropped.csv")
 file_06 = pd.read_csv("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/05_06_all_files_and_areas_dropped.csv")
@@ -181,15 +253,19 @@ print("may 6")
 # count_file_no_dif("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/05_06_all_files_and_areas_dropped.csv", "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/05_06_all_files_and_areas.csv")
 print("may 5")
 # count_file_no_dif("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/05_05_all_files_and_areas_dropped.csv", "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/05_05_all_files_and_areas.csv")
+
+# plot_a_vs_b("combined_file.csv", "Z", "Dose", "HV", 60, "Pulse", savePlot=False, no_3 = False)'''
+'''showPlot = True
 HV_list = [10, 20, 30, 40, 50, 60, 80, 100]
-# dist_list = [50, 60, 70]
-# plot_a_vs_b("combined_file.csv", "Z", "Dose", "HV", 60, "Pulse", savePlot=False, no_3 = False)
-'''plots_to_gen = [["Dose", "ch1_area", "C*10^-8", ""], ["Z", "ch1_area", "cm from collimator edge", ""], ["Z", "Dose", "cm from collimator edge", "C*10^-8"]]
+dist_list = [50, 60, 70]
+plots_to_gen = [["Dose", "ch1_area", "C*10^-8", ""], ["Z", "ch1_area", "cm from collimator edge", ""], ["Z", "Dose", "cm from collimator edge", "C*10^-8"]]
 for lst in plots_to_gen:
     for HV in HV_list:
-        plot_a_vs_b("combined_file.csv", lst[0], lst[1], lst[2], lst[3], "HV", HV, "Pulse", savePlot=True, no_3 = False)'''
+        plot_a_vs_b("all_files_and_areas_dropped.csv", lst[0], lst[1], lst[2], lst[3], "HV", HV, "Pulse", savePlot=True, no_3 = False)'''
 
-plot_a_vs_b("combined_file.csv", "Dose", "ch1_area", "C*10^-8", "", "HV", "HV", "Pulse", savePlot=True, no_3 = False)
+plot_a_vs_b("rachels_data_final.csv", "Z", "ch1_osc_count", "HV", filter_dict={"HV":20, "Beam":"Electrons 85V"}, savePlot=True)
+
+# plot_a_vs_b("rachels_data_final.csv", "Dose", "ch1_area", "C*10^-8", "", "HV", "HV", "Pulse", savePlot=True, no_3 = False)
 
 # percent_diff_removed("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/all_files","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-05-05/all_files","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-05-06/all_files")
 # plot_a_vs_b_both_mean("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv", "ch1_peaks", "ch2_peaks", "HV", 20, "Pulse", savePlot=False, no_3 = True)
