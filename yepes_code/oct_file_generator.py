@@ -263,7 +263,8 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
     interpolated_baseline = np.interp(time, time[valid_mask], baseline_smoothed[valid_mask])
 
     corrected_signal = signal-interpolated_baseline
-
+    saturation_corrected = saturation_correction(remove_start_index+savgol_peak_i, remove_start_index+savgol_neg_peak_i, time, corrected_signal, w, exp_mode=True)
+    print("SATURATION CORRECTED")
     # Calculate the area under the interpolated curve in the removed region
     removed_time = time[remove_start_index:remove_end_index + 1]  # Time in the removed region
     corrected_signal_removed_values = corrected_signal[remove_start_index:remove_end_index + 1]
@@ -306,12 +307,17 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
         print(f"Area under interpolated curve in signal region: {signal_area:.3e} ")
 
     # Visualization
+    print("lengths needed")
+    print(len(time))
+    print(len(saturation_corrected))
+    print(f"dif: {len(time)-len(saturation_corrected)}")
     if savePlot:
         plt.figure(figsize=(10, 6))
         plt.plot(time, signal, label="Original Signal", color="blue")
         plt.plot(time, corrected_signal, label="Corrected Signal", color="green")
-        plt.plot(time, interpolated_baseline, label="Interpolated Baseline", color="red")
+        # plt.plot(time, interpolated_baseline, label="Interpolated Baseline", color="red")
         plt.plot(time, w, 'black', label="smoothed signal (savgol)")  # high frequency noise removed
+        plt.plot(time, saturation_corrected, 'red', label="saturation corrected - simple connector")
         plt.axvspan(time[remove_start_index], time[remove_end_index], color="yellow", alpha=0.3, label="Removed Region")
         plt.axvline(time[shifted_start_index], color="green", linestyle="--", label="Shifted Start")
         plt.scatter(time[remove_start_index+savgol_peak_i], corrected_signal[remove_start_index+savgol_peak_i], color='orange', marker='x', label="oscillation peaks", zorder=2)
@@ -347,6 +353,59 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
         plt.close()
 
     return signal_area, nPeaks, osc_count
+
+def saturation_correction(positive_peaks_i, negative_peaks_i, time, signal, w, exp_mode=False):
+    corrected_signal = []
+    interval_lengths = []
+    inner_interval_lengths = []
+    print("signal lengths")
+    print(len(w))
+    print(len(signal))
+    print(len(time))
+    print("peak indices")
+    print(negative_peaks_i[0],negative_peaks_i[1])
+    print(negative_peaks_i)
+    interval_lengths.append(negative_peaks_i[0]+1)
+    if exp_mode:
+            x_points = time[negative_peaks_i]
+            y_points = signal[negative_peaks_i]
+            ylog_points = np.log(-y_points)
+            print(f"log data points: {ylog_points}")
+            coeffs = np.polyfit(x_points, ylog_points, 1)
+            print("exp mode coeffs")
+            print(coeffs)
+            corrected_signal = -(np.exp(coeffs[1]) * np.exp(coeffs[0]*(time[negative_peaks_i[0]:negative_peaks_i[-1]])))
+            corrected_signal = list(corrected_signal)
+    else:
+        for segment in range(0,len(negative_peaks_i)-1):
+            print("SEGMENT")
+            print(segment)
+            print(time[negative_peaks_i[segment]])
+            x_points = [time[negative_peaks_i[segment]], time[negative_peaks_i[segment+1]]]
+            y_points = [signal[negative_peaks_i[segment]], signal[negative_peaks_i[segment+1]]]
+            print("x points, y points")
+            print(x_points)
+            print(y_points)
+            coeffs = np.polyfit(x_points, y_points, 1)
+            p = np.poly1d(coeffs)
+            polyfit_data = p(time[negative_peaks_i[segment]:negative_peaks_i[segment+1]])
+            print(f"polyfit data shape: {polyfit_data.shape}")
+            corrected_signal = corrected_signal + list(polyfit_data)
+            print(f"interval length: {(negative_peaks_i[segment+1]-negative_peaks_i[segment])}")
+            interval_lengths.append(negative_peaks_i[segment+1]-negative_peaks_i[segment])
+            inner_interval_lengths.append(negative_peaks_i[segment+1]-negative_peaks_i[segment])
+            print(f"polyfit data length: {len(polyfit_data)}")
+            polyfit_data = []
+    print(f"inner interval corrected signal length: {len(corrected_signal)}")
+    print(f"pre-interval data length: {negative_peaks_i[0]}")
+    print(f"post-interval data length: {len(signal)-negative_peaks_i[-1]}")
+    interval_lengths.append(len(signal)-negative_peaks_i[-1])
+    corrected_signal = list(signal[0:negative_peaks_i[0]+1]) + corrected_signal + list(signal[negative_peaks_i[-1]:-1])
+    print(f"interval lengths list: {interval_lengths}")
+    print(f"total length: {sum(interval_lengths)}")
+    print(f"pre and post interval total length: {negative_peaks_i[0]+len(signal)-negative_peaks_i[-1]}")
+    print(f"inner interval total length: {sum(inner_interval_lengths)}")
+    return corrected_signal
 
 def cleanup_files(directory_name, range_dict):
     if not os.path.exists(directory_name):
@@ -588,7 +647,7 @@ savePlot = True
 get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH2" )
 
 # a single file with very few oscillations
-get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-10-15/scope-results-2025-10-15-0897.csv", range_dict, "2025-10-15", pulse=1, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
+# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-10-15/scope-results-2025-10-15-0897.csv", range_dict, "2025-10-15", pulse=1, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
 
 # a weird one
-get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-10-15/scope-results-2025-10-15-1272.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
+# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/2025-10-15/scope-results-2025-10-15-1272.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
