@@ -253,6 +253,7 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
 
     # adds saturation correction
     saturation_corrected = saturation_correction(remove_start_index+savgol_peak_i, remove_start_index+savgol_neg_peak_i, time, corrected_signal, w, exp_mode=True)
+    saturation_corrected_linear = saturation_correction(remove_start_index+savgol_peak_i, remove_start_index+savgol_neg_peak_i, time, corrected_signal, w, exp_mode=False)
     # Calculate the area under the interpolated curve in the removed region
     removed_time = time[remove_start_index:remove_end_index + 1]  # Time in the removed region
     corrected_signal_removed_values = corrected_signal[remove_start_index:remove_end_index + 1]
@@ -296,11 +297,12 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
         plt.plot(time, corrected_signal, label="Corrected Signal", color="green")
         plt.plot(time, interpolated_baseline, label="Interpolated Baseline", color="red")
         plt.plot(time, w, 'black', label="smoothed signal (savgol)")  # high frequency noise removed
-        plt.plot(time, saturation_corrected, 'gray', label="saturation corrected - simple connector")
+        plt.plot(time, saturation_corrected, 'purple', label="saturation corrected - exponential")
+        plt.plot(time, saturation_corrected_linear, 'orange', label="saturation corrected - simple linear")
         plt.axvspan(time[remove_start_index], time[remove_end_index], color="yellow", alpha=0.3, label="Removed Region")
         plt.axvline(time[shifted_start_index], color="green", linestyle="--", label="Shifted Start")
-        plt.scatter(time[remove_start_index+savgol_peak_i], corrected_signal[remove_start_index+savgol_peak_i], color='orange', marker='x', label="oscillation peaks", zorder=2)
-        plt.scatter(time[remove_start_index+savgol_neg_peak_i], corrected_signal[remove_start_index+savgol_neg_peak_i], color='orange', marker='x', zorder=2)
+        plt.scatter(time[remove_start_index+savgol_peak_i], corrected_signal[remove_start_index+savgol_peak_i], color='purple', marker='x', label="oscillation peaks", zorder=2)
+        plt.scatter(time[remove_start_index+savgol_neg_peak_i], corrected_signal[remove_start_index+savgol_neg_peak_i], color='purple', marker='x', zorder=2)
         plt.xlabel("Time (s)")
         plt.ylabel("Signal")
         plt.title("Signal Suppression and Interpolation")
@@ -568,7 +570,7 @@ def generator(log_file, output_file, date):
             for i in range(file_min_num, file_max_num + 1):
                 file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", file_min)
                 file_path = row["FileMin"].replace(f"{file_min_num:04}",f"{i:04}")
-                file_path = file_path.replace("/home/lgad/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/")
+                file_path = file_path.replace("/home/lgad/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/")
                 if not os.path.exists(file_path):
                     file_path = file_path.replace("CH1","CH2")
                     if not os.path.exists(file_path):
@@ -604,7 +606,37 @@ def generator(log_file, output_file, date):
     # output_file_df = output_file_df.dropna(subset=['ch1_osc_count', 'ch1_osc_count'])
     return(output_file)
 
+def convert_dose_c_to_gy(dose_ref_csv, dose_c, dist_cm, pulse_width_us, collimator_length_cm, dist_from_col=True):
+    dose_df = pd.read_csv(dose_ref_csv)
+    print(dose_df.head)
+    print("unique values")
+    print(dose_df["Collimation (cm, diameter)"].unique())
+    dose_df = dose_df[dose_df["Collimation (cm, diameter)"] == str(collimator_length_cm)]
+    print("gy per pulse column")
+    print(dose_df["Gy/P"])
+    print(dose_df.head())
+    print("distance from exit")
+    print(dose_df["dist. collimator exit (m)"])
+    if dist_from_col:
+        x_points = dose_df["dist. collimator exit (m)"]
+    else:
+        x_points = dose_df["dist. beam exit (m)"]
+    y_points = dose_df["Gy/P"]/dose_df["PW (electron pulse, us, FWHM)"]
+    print("x and y points")
+    print(x_points)
+    print(y_points)
+    ylog_points = np.log(y_points)
+    if verbose>1: print(f"log data points: {ylog_points}")
+    coeffs = np.polyfit(x_points, ylog_points, 1)
+    print(coeffs)
+    dose_gy = (np.exp(coeffs[1]) * np.exp(coeffs[0]*(dist_cm)))
+    dose_gy = dose_gy
+    print("FINAL DOSE")
+    print(dose_gy)
+    return(dose_gy)
 
+dose_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/20250401_LGAD_Doses_Collected_Data_Summary.xlsx - Sheet1.csv"
+convert_dose_c_to_gy(dose_file, 40, 40, 1, 2, dist_from_col=True)
 # running the generator
 '''verbose = 1
 showPlot = False
@@ -617,7 +649,7 @@ for date in oct_dates:
 showPlot = True
 savePlot = True
 # testing on a single file with a lot of oscillations
-get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH2" )
+# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH2" )
 
 # a single file with very few oscillations
 # get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0897.csv", range_dict, "2025-10-15", pulse=1, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
