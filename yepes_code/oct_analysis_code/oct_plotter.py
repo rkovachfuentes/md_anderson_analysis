@@ -12,6 +12,8 @@ from scipy.signal import peak_widths
 from pathlib import Path
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
+from oct_file_generator import convert_dose_c_to_gy
+from plot_with_linear_reg_by_pulse import plot_a_vs_b_with_linreg
 # from generate_all_files import plot_area_vs_distance
 
 
@@ -63,7 +65,7 @@ def cleanup_output_file(output_file):
     output_file_df = output_file_df[output_file_df['ch1_area'] > 0]
     output_file_df = output_file_df[output_file_df['ch2_area'] > 0]
     output_file_df = output_file_df.drop_duplicates()
-    output_file_df = output_file_df.dropna(subset=['ch1_osc_count', 'ch2_osc_count'])
+    # output_file_df = output_file_df.dropna(subset=['ch1_osc_count', 'ch2_osc_count'])
     comments_new = []
     for comment in output_file_df["HV"]:
         comment_clean = comment.replace("HV ", "")
@@ -72,13 +74,33 @@ def cleanup_output_file(output_file):
     output_file_df.to_csv(output_file)
     return
 
+def compute_dose_all_z(dose_ref_csv, distances, pulse_widths, collimator_length_cm, beam, dist_from_col=True ):
+    dose_list = []
+    for i in range(0,len(distances)):
+        print(f"idx: {i}")
+        print("all inputs:")
+        fixed_beam = beam[i].replace("Electrons ", "")
+        fixed_beam = int(fixed_beam.replace("V", ""))
+        print(f"distance: {distances[i]*0.01} pulse_width: {pulse_widths[i]} collimator length: {collimator_length_cm} beam: {fixed_beam} dist: {dist_from_col}")
+        curr_dose = convert_dose_c_to_gy(dose_ref_csv, 0, distances[i]*0.01, pulse_widths[i], collimator_length_cm, fixed_beam, dist_from_col=True)
+        dose_list.append(curr_dose)
+    return dose_list
+
+def save_doses(log_file):
+    log_df = pd.read_csv(log_file)
+    print(log_df.head)
+    doses = compute_dose_all_z("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/dose_scaling.csv",log_df["Z"],log_df["Pulse"],5,log_df["Beam"],dist_from_col=True)
+    print("all doses")
+    print(doses)
+    log_df.drop('Dose', axis=1, inplace=True)
+    log_df['Dose'] = doses
+    log_df.to_csv(log_file, index=False)
+    return
+
 def plot_a_vs_b(log_file, a, b, group_var, filter_dict={None:None}, savePlot = False):
     log_df = pd.read_csv(log_file)
-    print("unique HVs before slicing")
-    print(log_df["HV"])
-    print(log_df['HV'].unique())
     df_10 = log_df[(log_df["HV"] == 20)]
-    unit_dict = {"Detector":None, "Channel":None, "Beam":None, "Pulse":"us", "Dose":"C*10^-8", "X":"cm", "Z":"cm", "File":None, "ch1_area":"unitless", "ch2_area": "unitless", "HV":"V", "ch1_osc_count":"counts", "ch2_osc_count":"counts", "ch1_osc_perc":"%", "ch2_osc_perc":"%"}
+    unit_dict = {"Detector":None, "Channel":None, "Beam":None, "Pulse":"us", "Dose":"Gy", "X":"cm", "Z":"cm", "File":None, "ch1_area":"unitless", "ch2_area": "unitless", "HV":"V", "ch1_osc_count":"counts", "ch2_osc_count":"counts", "ch1_osc_perc":"%", "ch2_osc_perc":"%"}
     for filter in filter_dict.keys():
         if filter is None:
             break
@@ -88,12 +110,7 @@ def plot_a_vs_b(log_file, a, b, group_var, filter_dict={None:None}, savePlot = F
     color_list = ["red","black","blue","green","yellow"]
     pulse_list = ["0.1","0.5","1","2","3"]
     grouped_mean_multi = log_df.groupby([group_var, a])
-
-    print("unique HVs after slicing")
-    print(log_df['HV'].unique())
     df_10 = log_df[(log_df["HV"] == 20)]
-    print(df_10["Z"])
-
     fig, ax = plt.subplots(figsize=(8, 5))
     for group_tuple, val in grouped_mean_multi:
         initial_grp = group_tuple[0]
@@ -141,7 +158,7 @@ def plot_a_vs_b(log_file, a, b, group_var, filter_dict={None:None}, savePlot = F
     ax.legend()
     plt.show()
     if savePlot:
-        plt.savefig(f"plot_graveyard/{a}_vs_{b}_grouped_by_{group_var}_filters.png")
+        plt.savefig(f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/plot_graveyard/{a}_vs_{b}_grouped_by_{group_var}_filters.png")
     return
 
 def plot_a_vs_b_both_mean(log_file, a, b, a_unit, b_unit, filter_var, filter_val, group_var, savePlot = False, no_3 = False):
@@ -182,8 +199,14 @@ file_06 = pd.read_csv("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_cod
 combined_df = pd.concat([file_05, file_06], ignore_index=True)
 combined_df.to_csv('/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/oct_combined_file_30.csv', index=False)'''
 
-plot_a_vs_b("oct_combined_file_30.csv", "Z", "ch1_osc_count", "HV", filter_dict={"Pulse":3.0, "Beam":"Electrons 85V"}, savePlot=True)
-plot_a_vs_b("oct_combined_file_30.csv", "Z", "ch2_osc_count", "HV", filter_dict={"Pulse":3.0, "Beam":"Electrons 85V"}, savePlot=True)
+cleanup_output_file("oct_combined_file.csv")
+beam_list = [85, 110, 191]
+HV_list = [20, 50, 100, 9, 10, 7, 0]
+plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch1_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False)
+plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch2_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False)
+'''save_doses("oct_combined_file.csv")
+log_df = pd.read_csv("oct_combined_file.csv")
+print(log_df.head)'''
 
 # percent_diff_removed("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/all_files","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-05-05/all_files","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-05-06/all_files")
 # plot_a_vs_b_both_mean("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv", "ch1_peaks", "ch2_peaks", "HV", 20, "Pulse", savePlot=False, no_3 = True)
