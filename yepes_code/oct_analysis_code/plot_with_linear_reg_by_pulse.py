@@ -121,10 +121,9 @@ def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, 
     # generate final plot
     plt.errorbar(grp_a, grp_means, yerr=0.2*np.array(grp_means), color=color_dict[str(initial_grp)], label=f"{initial_grp} us", fmt='o')
     # generate polynomial fits and plot them
-    print("REGRESSION PLOTS")
     for initial_grp in regression_dict.keys():
+        if config.verbose > 0: print(f"regression plot for group: {initial_grp}")
         grp_a = regression_dict[initial_grp][0][0]
-        print(f"initial grp: {initial_grp}")
         grp_means = regression_dict[initial_grp][1][0]
         fitted_values = generate_polynomial_fit(grp_a,grp_means,2)
         smooth_range = np.linspace(np.min(grp_a),np.max(grp_a),100)
