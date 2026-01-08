@@ -15,11 +15,13 @@ from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 from oct_file_generator import convert_dose_c_to_gy
 from plot_with_linear_reg_by_pulse import plot_a_vs_b_with_linreg
-# from generate_all_files import plot_area_vs_distance
 
+# reference lists of beams and HV values
+beam_list = [85, 110, 191]
+HV_list = [20, 50, 100, 9, 10, 7, 0]
 
+# helper function to count difference in # of rows between files
 def count_file_no_dif(file1, file2):
-    file_path = 'your_file.csv'
     with open(file1, 'r') as f1:
         reader1 = csv.reader(f1)
         row_count1 = len(list(reader1))
@@ -31,6 +33,7 @@ def count_file_no_dif(file1, file2):
     print((row_count_1-row_count_2)/row_count_2)
     return (row_count_1-row_count_2)/row_count_2
 
+# helper function to count the percent difference in # of files between 2 directories
 def percent_diff_removed(original_dir, current_dir1, current_dir2):
     original_lst = os.listdir(original_dir)
     current_lst1 = os.listdir(current_dir1)
@@ -40,6 +43,7 @@ def percent_diff_removed(original_dir, current_dir1, current_dir2):
     print((len_curr-len_or)/len_or)
     return (len_curr-len_or)/len_or
 
+# helper function to filter out files for plots with areas below an area threshold defined in the lower_limits dictionary
 def filter_small_values(output_file, lower_limits, dropped_file):
     output_file_df = pd.read_csv(output_file)
     channels = ["CH1"]
@@ -57,6 +61,8 @@ def filter_small_values(output_file, lower_limits, dropped_file):
     output_file_df.to_csv(dropped_file)
     return
 
+# helper function to drop unnamed files, files with negative areas, or with NaN column values
+# also reformats "comment" column into an HV column
 def cleanup_output_file(output_file):
     output_file_df = pd.read_csv(output_file)
     column_list_tolist = output_file_df.columns.tolist()
@@ -75,6 +81,9 @@ def cleanup_output_file(output_file):
     output_file_df.to_csv(output_file)
     return
 
+###### PLOTTER FUNCTIONS
+# plots column a vs column b, organized by groups and with filters as defined in filter_dict: {column: value}
+# does not include regression feature; this function with regression is in plot_with_linear_reg_by_pulse
 def plot_a_vs_b(log_file, a, b, group_var, filter_dict={None:None}, savePlot = False):
     log_df = pd.read_csv(log_file)
     print("unique HVs before slicing")
@@ -172,29 +181,6 @@ def plot_a_vs_b_both_mean(log_file, a, b, a_unit, b_unit, filter_var, filter_val
     
     return
 
-# cleanup_output_file("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/output-file-gen-2025-10-15.csv")
-# cleanup_output_file("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/output-file-gen-2025-10-14.csv")
-
-'''plots_to_gen = [["Dose", "ch1_area", "C*10^-8", ""], ["Z", "ch1_area", "cm from collimator edge", ""], ["Z", "Dose", "cm from collimator edge", "C*10^-8"]]
-for lst in plots_to_gen:
-    for HV in HV_list:
-        plot_a_vs_b("combined_file.csv", lst[0], lst[1], lst[2], lst[3], "HV", HV, "Pulse", savePlot=True, no_3 = False)'''
-
-'''file_05 = pd.read_csv("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/output-file-gen-2025-10-14.csv")
-file_06 = pd.read_csv("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/output-file-gen-2025-10-15.csv")
-combined_df = pd.concat([file_05, file_06], ignore_index=True)
-combined_df.to_csv('/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/oct_combined_file_30.csv', index=False)'''
-
-# cleanup_output_file("oct_combined_file.csv")
-beam_list = [85, 110, 191]
-HV_list = [20, 50, 100, 9, 10, 7, 0]
-
+# generate plots here
 plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch1_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False)
 plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch2_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False)
-'''save_doses("oct_combined_file.csv")
-log_df = pd.read_csv("oct_combined_file.csv")
-print(log_df.head)'''
-
-# percent_diff_removed("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/all_files","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-05-05/all_files","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-05-06/all_files")
-# plot_a_vs_b_both_mean("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv", "ch1_peaks", "ch2_peaks", "HV", 20, "Pulse", savePlot=False, no_3 = True)
-# filter_small_values(output_file, lower_limits, "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv")
