@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+import config
 import csv
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,9 +15,15 @@ from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 from scipy.signal import ShortTimeFFT
 
-verbose=1
 showPlot = True
 savePlot=True
+
+# dose_file includes scaling information for doses for different beams, distances
+dose_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/dose_scaling.csv"
+
+pulses=[1]
+pulses=[0.1,0.5,1,2,3]
+range_dict = {"0.1":[699,np.inf],"0.5":[551, 1105],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
 
 #==================================================================================================
 #
@@ -37,7 +43,7 @@ def read_csv(file_path_init, selected_channel="CH1"):
     else:
         file_path = str(file_path_init)
         file_path = file_path.replace("/home/lgad/data","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code")
-        if verbose > 1: print(file_path)
+        if config.verbose > 1: print(file_path)
     try:
         with open(file_path, mode='r') as file:
             reader = csv.reader(file)
@@ -78,7 +84,7 @@ def read_csv(file_path_init, selected_channel="CH1"):
 # get_area takes in a scope file and list of characteristics and returns the selected channel area
 # it also saves a plot of the signal region, baseline, smoothed baseline, and saturation correction if selected
 # the logfile is modified in place to include new columns of the areas, osc counts, peak counts
-def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1" ):
+def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1", show_saturation_correction=False):
     npeaks_list = []
     corresponding_files = []
     pulse_widths = []
@@ -110,7 +116,7 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
     threshold = 0.30 * signal_range
     currmin = signal_max
     currmin_i = 0
-    if verbose>1: print("threshold", threshold)
+    if config.verbose>1: print("threshold", threshold)
     for i in range(5, len(apparent_signal)):
         req_width = 10
         if abs(apparent_signal[i] - apparent_signal[i-5]) > threshold:
@@ -118,7 +124,7 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
             if (apparent_signal[i] < currmin):
                 currmin = apparent_signal[i]
                 currmin_i = len(fluctuation_indices)-1
-    if verbose>1: print("fluctuation indices",fluctuation_indices)
+    if config.verbose>1: print("fluctuation indices",fluctuation_indices)
     # Identify the start of fluctuations
     if len(fluctuation_indices) > 1:
         fluctuation_indices.sort(reverse=False)
@@ -171,7 +177,7 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
                 end_index_back = i
 
     # Output the results
-    if verbose>1:
+    if config.verbose>1:
         print(f"Largest increase: {largest_increase:.2f}")
         print(f"Start index: {start_index}, Time: {time[start_index]:.6e} s signal {signal[start_index]}")
         print(f"End index: {end_index}, Time: {time[end_index]:.6e} s signal {signal[end_index]}")
@@ -215,7 +221,7 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
                 if savgol_neg_peak_i[i] < savgol_peak_i[i]:
                     osc_count += 1
             except:
-                if verbose>1: print("stopped oscillation count")
+                if config.verbose>1: print("stopped oscillation count")
                 break
     region_min = signal[remove_start_index:remove_end_index + 1].min()
     region_max = signal[remove_start_index:remove_end_index + 1].max()
@@ -226,8 +232,8 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
         if abs(w[i] - signal[i]) > large_osc_threshold:
             large_oscs += 1
     osc_percentage = large_oscs/(remove_end_index-remove_start_index)
-    if verbose>1: print(f"OSC COUNT: {large_oscs}")
-    if verbose>1: print(f"LARGE OSC PERCENTAGE: {osc_percentage}")
+    if config.verbose>1: print(f"OSC COUNT: {large_oscs}")
+    if config.verbose>1: print(f"LARGE OSC PERCENTAGE: {osc_percentage}")
     # Remove the area by setting the signal to NaN in this region
     signal_removed = np.copy(signal)
     signal_removed[remove_start_index:remove_end_index + 1] = np.nan
@@ -254,7 +260,7 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
     # adds saturation correction
     saturation_corrected = saturation_correction(remove_start_index+savgol_peak_i, remove_start_index+savgol_neg_peak_i, time, corrected_signal, w, exp_mode=True)
     saturation_corrected_linear = saturation_correction(remove_start_index+savgol_peak_i, remove_start_index+savgol_neg_peak_i, time, corrected_signal, w, exp_mode=False)
-    # Calculate the area under the interpolated curve in the removed region
+    # calculate the area under the interpolated curve in the removed region
     removed_time = time[remove_start_index:remove_end_index + 1]  # Time in the removed region
     corrected_signal_removed_values = corrected_signal[remove_start_index:remove_end_index + 1]
     signal_removed_values = signal[remove_start_index:remove_end_index + 1]
@@ -284,8 +290,8 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
         max_width_idx = np.where(widths == max(widths))
 
     # Output the results
-    if verbose>1:
-        print(f"Shifted start index: {shifted_start_xsindex}, Time: {time[shifted_start_index]:.6e} s")
+    if config.verbose>1:
+        print(f"Shifted start index: {shifted_start_index}, Time: {time[shifted_start_index]:.6e} s")
         print(f"Removed area start time: {time[remove_start_index]:.6e} s")
         print(f"Removed area end time: {time[remove_end_index]:.6e} s")
         print(f"Area under interpolated curve in signal region: {signal_area:.3e} ")
@@ -297,8 +303,9 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
         plt.plot(time, corrected_signal, label="Corrected Signal", color="green")
         plt.plot(time, interpolated_baseline, label="Interpolated Baseline", color="red")
         plt.plot(time, w, 'black', label="smoothed signal (savgol)")  # high frequency noise removed
-        plt.plot(time, saturation_corrected, 'purple', label="saturation corrected - exponential")
-        plt.plot(time, saturation_corrected_linear, 'orange', label="saturation corrected - simple linear")
+        if show_saturation_correction:
+            plt.plot(time, saturation_corrected, 'purple', label="saturation corrected - exponential")
+            plt.plot(time, saturation_corrected_linear, 'orange', label="saturation corrected - simple linear")
         plt.axvspan(time[remove_start_index], time[remove_end_index], color="yellow", alpha=0.3, label="Removed Region")
         plt.axvline(time[shifted_start_index], color="green", linestyle="--", label="Shifted Start")
         plt.scatter(time[remove_start_index+savgol_peak_i], corrected_signal[remove_start_index+savgol_peak_i], color='purple', marker='x', label="oscillation peaks", zorder=2)
@@ -326,7 +333,7 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
         else:
             print(f"Directory already exists: {graphicDir}")
         graphicFile=f"{graphicDir}/dose-calc-pulse={pulse}-{ifile}-{selected_channel}.jpg"
-        if verbose>2: print("graphicFile ", graphicFile)
+        if config.verbose>2: print("graphicFile ", graphicFile)
         plt.savefig(graphicFile, format="jpeg", dpi=300)
         if showPlot:
             print("SHOW")
@@ -346,7 +353,7 @@ def saturation_correction(positive_peaks_i, negative_peaks_i, time, signal, w, e
             x_points = time[negative_peaks_i]
             y_points = signal[negative_peaks_i]
             ylog_points = np.log(-y_points)
-            if verbose>1: print(f"log data points: {ylog_points}")
+            if config.verbose>1: print(f"log data points: {ylog_points}")
             coeffs = np.polyfit(x_points, ylog_points, 1)
             corrected_signal = -(np.exp(coeffs[1]) * np.exp(coeffs[0]*(time[negative_peaks_i[0]:negative_peaks_i[-1]])))
             corrected_signal = list(corrected_signal)
@@ -357,20 +364,20 @@ def saturation_correction(positive_peaks_i, negative_peaks_i, time, signal, w, e
             coeffs = np.polyfit(x_points, y_points, 1)
             p = np.poly1d(coeffs)
             polyfit_data = p(time[negative_peaks_i[segment]:negative_peaks_i[segment+1]])
-            if verbose>1: print(f"polyfit data shape: {polyfit_data.shape}")
+            if config.verbose>1: print(f"polyfit data shape: {polyfit_data.shape}")
             corrected_signal = corrected_signal + list(polyfit_data)
-            if verbose>1: print(f"interval length: {(negative_peaks_i[segment+1]-negative_peaks_i[segment])}")
+            if config.verbose>1: print(f"interval length: {(negative_peaks_i[segment+1]-negative_peaks_i[segment])}")
             interval_lengths.append(negative_peaks_i[segment+1]-negative_peaks_i[segment])
             inner_interval_lengths.append(negative_peaks_i[segment+1]-negative_peaks_i[segment])
-            if verbose>1: print(f"polyfit data length: {len(polyfit_data)}")
+            if config.verbose>1: print(f"polyfit data length: {len(polyfit_data)}")
             polyfit_data = []
-    if verbose>1:
+    if config.verbose>1:
         print(f"inner interval corrected signal length: {len(corrected_signal)}")
         print(f"pre-interval data length: {negative_peaks_i[0]}")
         print(f"post-interval data length: {len(signal)-negative_peaks_i[-1]}")
     interval_lengths.append(len(signal)-negative_peaks_i[-1])
     corrected_signal = list(signal[0:negative_peaks_i[0]+1]) + corrected_signal + list(signal[negative_peaks_i[-1]:-1])
-    if verbose>1:
+    if config.verbose>1:
         print(f"interval lengths list: {interval_lengths}")
         print(f"total length: {sum(interval_lengths)}")
         print(f"pre and post interval total length: {negative_peaks_i[0]+len(signal)-negative_peaks_i[-1]}")
@@ -406,7 +413,7 @@ def straight_line_across(time_data, channel_data, drop_idx, signal_range):
     for idx in indices:
         if (idx - prev) > 100:
             break
-    if verbose > 1:
+    if config.verbose > 1:
         print("returning value",channel_data[drop_idx+idx])
         print("drop idx",drop_idx)
         print("returning idx", drop_idx+idx)
@@ -520,10 +527,7 @@ def plot_area_vs_distance(log_file,selected_voltage=50):
         
 #==============================================================================
 
-pulses=[1]
-pulses=[0.1,0.5,1,2,3]
-range_dict = {"0.1":[699,np.inf],"0.5":[551, 1105],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
-
+######## GENERATOR
 # the generator function automatically runs get_area over all log and scope files for a specified date saving the results to an outfile
 def generator(log_file, output_file, date):
     log_df = pd.read_csv(log_file)
@@ -550,7 +554,7 @@ def generator(log_file, output_file, date):
             (log_df["Detector"] == Detector) &
             (log_df["Pulse"] == pulse)
         ]
-        if verbose>1:
+        if config.verbose>1:
             print("matching rows ", matching_rows["Detector", "Beam", "Z", "X", "Pulse", "Dose"])
         for _, row in matching_rows.iterrows():
             file_min = str(row["FileMin"])
@@ -594,7 +598,7 @@ def generator(log_file, output_file, date):
                     new_row_df = pd.DataFrame([new_row_data])
                     # Concatenate the DataFrames
                     output_file_df = pd.concat([output_file_df, new_row_df], ignore_index=True)
-                    if verbose>-1:
+                    if config.verbose>-1:
                         print(f"ch1 i {i} pulse {pulse} signal_area {ch1_signal_area}", )
                 else:
                     print("no signal area")
@@ -626,7 +630,7 @@ def convert_dose_c_to_gy(dose_ref_csv, dose_c, dist_cm, pulse_width_us, collimat
     print(x_points)
     print(y_points)
     ylog_points = np.log(y_points)
-    if verbose>1: print(f"log data points: {ylog_points}")
+    if config.verbose>1: print(f"log data points: {ylog_points}")
     coeffs = np.polyfit(x_points, ylog_points, 1)
     print(coeffs)
     dose_gy = (np.exp(coeffs[1]) * np.exp(coeffs[0]*(dist_cm)))
@@ -635,24 +639,12 @@ def convert_dose_c_to_gy(dose_ref_csv, dose_c, dist_cm, pulse_width_us, collimat
     print(dose_gy)
     return(dose_gy)
 
-dose_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/20250401_LGAD_Doses_Collected_Data_Summary.xlsx - Sheet1.csv"
-# convert_dose_c_to_gy(dose_file, 40, 40, 1, 2, dist_from_col=True)
-# running the generator
-'''verbose = 1
-showPlot = False
-savePlot = True
-oct_dates = ["2025-10-14","2025-10-15"]
-file_path = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0050.csv"
-for date in oct_dates:
-    generator(f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-{date}-log.csv", f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/outfiles_for_plotting/output-file-gen-{date}.csv", date)
-'''
-showPlot = True
-savePlot = True
+##### SOME USEFUL TEST FILES FOR AREA TESTING
 # testing on a single file with a lot of oscillations
-# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH2" )
+get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH2" )
 
 # a single file with very few oscillations
-# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0897.csv", range_dict, "2025-10-15", pulse=1, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
+get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0897.csv", range_dict, "2025-10-15", pulse=1, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
 
 # a weird one
-# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-1272.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
+get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-1272.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
