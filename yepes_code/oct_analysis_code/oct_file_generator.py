@@ -636,7 +636,7 @@ def convert_dose_c_to_gy(dose_ref_csv, dose_c, dist_cm, pulse_width_us, collimat
     return(dose_gy)
 
 dose_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/20250401_LGAD_Doses_Collected_Data_Summary.xlsx - Sheet1.csv"
-convert_dose_c_to_gy(dose_file, 40, 40, 1, 2, dist_from_col=True)
+# convert_dose_c_to_gy(dose_file, 40, 40, 1, 2, dist_from_col=True)
 # running the generator
 '''verbose = 1
 showPlot = False

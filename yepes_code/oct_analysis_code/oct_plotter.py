@@ -1,4 +1,5 @@
 import csv
+import config
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -12,6 +13,8 @@ from scipy.signal import peak_widths
 from pathlib import Path
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
+from oct_file_generator import convert_dose_c_to_gy
+from plot_with_linear_reg_by_pulse import plot_a_vs_b_with_linreg
 # from generate_all_files import plot_area_vs_distance
 
 
@@ -182,8 +185,15 @@ file_06 = pd.read_csv("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_cod
 combined_df = pd.concat([file_05, file_06], ignore_index=True)
 combined_df.to_csv('/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/oct_combined_file_30.csv', index=False)'''
 
-plot_a_vs_b("oct_combined_file_30.csv", "Z", "ch1_osc_count", "HV", filter_dict={"Pulse":3.0, "Beam":"Electrons 85V"}, savePlot=True)
-plot_a_vs_b("oct_combined_file_30.csv", "Z", "ch2_osc_count", "HV", filter_dict={"Pulse":3.0, "Beam":"Electrons 85V"}, savePlot=True)
+# cleanup_output_file("oct_combined_file.csv")
+beam_list = [85, 110, 191]
+HV_list = [20, 50, 100, 9, 10, 7, 0]
+
+plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch1_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False)
+plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch2_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False)
+'''save_doses("oct_combined_file.csv")
+log_df = pd.read_csv("oct_combined_file.csv")
+print(log_df.head)'''
 
 # percent_diff_removed("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-07-30/all_files","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-05-05/all_files","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-05-06/all_files")
 # plot_a_vs_b_both_mean("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/all_files_and_areas_dropped.csv", "ch1_peaks", "ch2_peaks", "HV", 20, "Pulse", savePlot=False, no_3 = True)
