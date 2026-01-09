@@ -19,6 +19,8 @@ from plot_with_linear_reg_by_pulse import plot_a_vs_b_with_linreg
 # reference lists of beams and HV values
 beam_list = [85, 110, 191]
 HV_list = [20, 50, 100, 9, 10, 7, 0]
+lower_limits = {"0.1":1e-11, "0.5":1e-8,"1.0":1e-8,"2.0":1e-8,"3.0":1e-8}
+lower_limits = {"0.1":1e-11, "0.5":1e-8,"1.0":1e-8,"2.0":1e-8,"3.0":1e-8}
 
 # helper function to count difference in # of rows between files
 def count_file_no_dif(file1, file2):
@@ -50,11 +52,10 @@ def filter_small_values(output_file, lower_limits, dropped_file):
     for index, row in output_file_df.iterrows():
         pulse = row["Pulse"]
         ifile = int((row["File"].split("-"))[-1].replace(".csv",""))
-        if (float(row["ch1_area"]) < lower_limits[str(pulse)]):
+        if (float(row["ch1_area"]) <= 0.000001): # lower_limits[str(pulse)])
             graphicDir = f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/new-plot-dose-2025-05-06/all_files"
             for channel in channels:
                 graphicFile=f"{graphicDir}/dose-calc-pulse={int(pulse)}-{ifile}-{channel}.jpg"
-                print(graphicFile)
                 if os.path.exists(graphicFile):
                     os.remove(graphicFile)
             output_file_df.drop(index, inplace=True)
@@ -72,12 +73,11 @@ def cleanup_output_file(output_file):
     output_file_df = output_file_df[output_file_df['ch1_area'] > 0]
     output_file_df = output_file_df[output_file_df['ch2_area'] > 0]
     output_file_df = output_file_df.drop_duplicates()
-    output_file_df = output_file_df.dropna(subset=['ch1_osc_count', 'ch2_osc_count'])
     comments_new = []
-    for comment in output_file_df["HV"]:
+    '''for comment in output_file_df["Comment"]:
         comment_clean = comment.replace("HV ", "")
         comments_new.append(comment_clean)
-    output_file_df["HV"] = comments_new
+    output_file_df["HV"] = comments_new'''
     output_file_df.to_csv(output_file)
     return
 
@@ -182,5 +182,9 @@ def plot_a_vs_b_both_mean(log_file, a, b, a_unit, b_unit, filter_var, filter_val
     return
 
 # generate plots here
-plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch1_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False)
-plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch2_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False)
+# cleanup_output_file("final_oct_combined_file.csv")
+for hv in HV_list:
+    plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch1_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False, no_means=True)
+    plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch1_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False, no_means=False)
+    plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch2_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False, no_means=True)
+    plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch2_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"100"}, savePlot=True, no_3=False, no_means=False)

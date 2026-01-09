@@ -641,10 +641,10 @@ def convert_dose_c_to_gy(dose_ref_csv, dose_c, dist_cm, pulse_width_us, collimat
 
 ##### SOME USEFUL TEST FILES FOR AREA TESTING
 # testing on a single file with a lot of oscillations
-get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH2" )
+# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH2" )
 
 # a single file with very few oscillations
-get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0897.csv", range_dict, "2025-10-15", pulse=1, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
+# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0897.csv", range_dict, "2025-10-15", pulse=1, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
 
 # a weird one
-get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-1272.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
+# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-1272.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )

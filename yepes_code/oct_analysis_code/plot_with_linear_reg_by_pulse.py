@@ -50,7 +50,7 @@ def generate_polynomial_fit(x_data, y_data, degree):
 
 # plots a variable a vs variable b, grouped by group_var, with filters applied in filter_dict. filter format: {column name: filter value}
 # no_3 is an optional argument which, when true, excludes 3.0 us pulses from the plot
-def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, savePlot = False, no_3 = False):
+def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, savePlot = False, no_3 = False, no_means=False, per_pulse=False):
     ##### generates dataframe of log file, drops all rows that don't satisfy filters, groups by groupvar and a (in that order)
     log_df = pd.read_csv(log_file)
     # removes filtered values
@@ -61,8 +61,12 @@ def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, 
             log_df = log_df[log_df[filter] == filter_dict[filter]]
     # groups values, selects first group (pulse length)
     grouped_mean_multi = log_df.groupby([group_var, a])
+    print(grouped_mean_multi.head())
     for group_tuple, val in grouped_mean_multi:
+        print(group_tuple)
+        print(val)
         initial_grp = group_tuple[0]
+        # print(f"initial group: {initial_grp}")
         break
     # initializing empty lists to store the a, mean b, error values
     grp_means = []
@@ -80,13 +84,18 @@ def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, 
         else:
             # case 1: still in the same group, add to lists and continue
             if group_tuple[0] == initial_grp:
-                grp_means.append(val[b].mean())
-                if val[b].std() > 0:
+                val[b] = val[b][val[b] > 1e-7]
+                if not no_means:
+                    grp_means.append(val[b].mean())
                     grp_errs.append(val[b].std())
+                    grp_a.append(group_tuple[1])
+                    z_labels.append(val["Z"].mean())
                 else:
-                    grp_errs.append(0.4)
-                grp_a.append(group_tuple[1])
-                z_labels.append(val["Z"].mean())
+                    for item in val[b]:
+                        grp_means.append(item)
+                        grp_errs.append(item*0.1)
+                        grp_a.append(group_tuple[1])
+                    z_labels.append(val["Z"].mean())
             # case 2: moved to a new group, aggregate the previous data and generate a plot
             else:
                 plt.errorbar(grp_a, grp_means, yerr=grp_errs, color=color_dict[str(initial_grp)], label=f"{initial_grp} us", fmt='o')
@@ -107,9 +116,16 @@ def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, 
                 z_labels = []
                 # reset initial_grp to the new current group
                 initial_grp = group_tuple[0]
-                grp_means.append(val[b].mean())
-                grp_errs.append(val[b].std())
-                grp_a.append(group_tuple[1])
+                if not no_means:
+                    grp_means.append(val[b].mean())
+                    grp_errs.append(val[b].std())
+                    grp_a.append(group_tuple[1])
+                    z_labels.append(val["Z"].mean())
+                else:
+                    for item in val[b]:
+                        grp_means.append(item)
+                        grp_errs.append(item*0.1)
+                        grp_a.append(group_tuple[1])
     # add the final group to the regression dict
     if initial_grp in regression_dict.keys():
         regression_dict[initial_grp][0].append(grp_a)
