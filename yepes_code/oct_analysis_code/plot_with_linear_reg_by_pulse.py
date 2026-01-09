@@ -58,7 +58,12 @@ def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, 
         if filter is None:
             break
         else:
+            print(f"filter: {filter} {filter_dict[filter]}")
+            print("before filter:")
+            print(log_df.head)
+            print("after filter:")
             log_df = log_df[log_df[filter] == filter_dict[filter]]
+            print(log_df.head)
     # groups values, selects first group (pulse length)
     grouped_mean_multi = log_df.groupby([group_var, a])
     print(grouped_mean_multi.head())
