@@ -186,6 +186,7 @@ def plot_a_vs_b_both_mean(log_file, a, b, a_unit, b_unit, filter_var, filter_val
 
 log_file = "oct_combined_file.csv"
 log_df = pd.read_csv(log_file)
+print(log_df.head)
 unique_beams = log_df['Beam'].unique()
 unique_hv = log_df['HV'].unique()
 print(unique_beams)
@@ -200,7 +201,7 @@ for group_tuple, val in grouped_by_beam_hv:
     print(group_tuple)
     beam = group_tuple[0]
     hv = group_tuple[1]
-    plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch1_area", "Pulse", filter_dict={"Beam":f"{beam}","HV":f"{hv}"}, savePlot=True, no_3=False, no_means=True)
-    plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch1_area", "Pulse", filter_dict={"Beam":f"{beam}","HV":f"{hv}"}, savePlot=True, no_3=False, no_means=False)
-    plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch2_area", "Pulse", filter_dict={"Beam":f"{beam}","HV":f"{hv}"}, savePlot=True, no_3=False, no_means=True)
-    plot_a_vs_b_with_linreg("oct_combined_file.csv", "Dose", "ch2_area", "Pulse", filter_dict={"Beam":f"{beam}","HV":f"{hv}"}, savePlot=True, no_3=False, no_means=False)
+    plot_a_vs_b_with_linreg(log_file, "Dose", "ch1_area", "Pulse", filter_dict={"Beam":f"{beam}","HV":f"{hv}"}, savePlot=True, no_3=False, no_means=True)
+    plot_a_vs_b_with_linreg(log_file, "Dose", "ch1_area", "Pulse", filter_dict={"Beam":f"{beam}","HV":f"{hv}"}, savePlot=True, no_3=False, no_means=False)
+    plot_a_vs_b_with_linreg(log_file, "Dose", "ch2_area", "Pulse", filter_dict={"Beam":f"{beam}","HV":f"{hv}"}, savePlot=True, no_3=False, no_means=True)
+    plot_a_vs_b_with_linreg(log_file, "Dose", "ch2_area", "Pulse", filter_dict={"Beam":f"{beam}","HV":f"{hv}"}, savePlot=True, no_3=False, no_means=False)

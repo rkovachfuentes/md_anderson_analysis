@@ -15,14 +15,13 @@ from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 from scipy.signal import ShortTimeFFT
 
-showPlot = True
+showPlot = True 
 savePlot=True
 
 # dose_file includes scaling information for doses for different beams, distances
 dose_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/dose_scaling.csv"
 
-pulses=[1]
-pulses=[0.1,0.5,1,2,3]
+pulses=[0.5,1.0,2.0,3.0]
 range_dict = {"0.1":[699,np.inf],"0.5":[551, 1105],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
 
 #==================================================================================================
@@ -531,6 +530,7 @@ def plot_area_vs_distance(log_file,selected_voltage=50):
 # the generator function automatically runs get_area over all log and scope files for a specified date saving the results to an outfile
 def generator(log_file, output_file, date):
     log_df = pd.read_csv(log_file)
+    print(log_df.head)
     npeaks_list = []
     corresponding_files = []
     pulse_widths = []
@@ -540,22 +540,25 @@ def generator(log_file, output_file, date):
     ch2_mean_signal_peaks=[]
     doses=[]
     pulse_tracker = []
-    Detector = "BNL"
+    Detector = "SiC"
 
     showPlot = True
     if not os.path.exists(output_file):
-        df = pd.DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})
+        print("does not exist")
         df = pd.DataFrame(columns=['Detector','Channel','Beam','Pulse','Dose','X','Z','File','ch1_area','ch2_area','ch1_peaks','ch2_peaks', 'ch1_osc_count', 'ch2_osc_count'])
         df.to_csv(output_file)
     output_file_df = pd.read_csv(output_file)
+    print(output_file_df.head)
 
     for pulse in pulses:
         matching_rows = log_df[
             (log_df["Detector"] == Detector) &
-            (log_df["Pulse"] == pulse)
+            (log_df["Pulse"] == str(pulse))
         ]
         if config.verbose>1:
-            print("matching rows ", matching_rows["Detector", "Beam", "Z", "X", "Pulse", "Dose"])
+            print(f"MATCHING ROWS for {Detector} and {pulse}")
+            print(matching_rows)
+            # print("matching rows ", matching_rows["Detector", "Beam", "Z", "X", "Pulse", "Dose"])
         for _, row in matching_rows.iterrows():
             file_min = str(row["FileMin"])
             file_max = str(row["FileMax"])
@@ -598,6 +601,7 @@ def generator(log_file, output_file, date):
                     new_row_df = pd.DataFrame([new_row_data])
                     # Concatenate the DataFrames
                     output_file_df = pd.concat([output_file_df, new_row_df], ignore_index=True)
+                    print("added row")
                     if config.verbose>-1:
                         print(f"ch1 i {i} pulse {pulse} signal_area {ch1_signal_area}", )
                 else:
@@ -606,7 +610,6 @@ def generator(log_file, output_file, date):
         print("pulse completed")
     print(output_file_df.head())
     output_file_df.to_csv(output_file,index=False)
-    output_file_df = output_file_df.drop_duplicates()
     # output_file_df = output_file_df.dropna(subset=['ch1_osc_count', 'ch1_osc_count'])
     return(output_file)
 
@@ -639,9 +642,10 @@ def convert_dose_c_to_gy(dose_ref_csv, dose_c, dist_cm, pulse_width_us, collimat
     print(dose_gy)
     return(dose_gy)
 
+# generator("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-11-20-log.csv", "november_output.csv", "2025-11-20")
 ##### SOME USEFUL TEST FILES FOR AREA TESTING
 # testing on a single file with a lot of oscillations
-# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH2" )
+# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH2", show_saturation_correction=True)
 
 # a single file with very few oscillations
 # get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0897.csv", range_dict, "2025-10-15", pulse=1, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )

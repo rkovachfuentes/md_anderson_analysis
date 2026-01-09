@@ -103,9 +103,11 @@ def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, 
                     z_labels.append(val["Z"].mean())
             # case 2: moved to a new group, aggregate the previous data and generate a plot
             else:
-                plt.errorbar(grp_a, grp_means, yerr=grp_errs, color=color_dict[str(initial_grp)], label=f"{initial_grp} us", fmt='o')
-                fitted_values = generate_polynomial_fit(grp_a,grp_means,2)
-                smooth_range = np.linspace(np.min(grp_a),np.max(grp_a),100)
+                plt.errorbar(grp_a/initial_grp, grp_means/initial_grp, yerr=grp_errs, color=color_dict[str(initial_grp)], label=f"{initial_grp} us", fmt='o')
+                # fitted_values = generate_polynomial_fit(grp_a[config.min_fit_range:config.max_fit_range],grp_means[config.min_fit_range:config.max_fit_range],config.set_degree)
+                # chi_squared = np.sum((np.polyval(fitted_values, grp_a) - grp_means) ** 2)
+                # print(f"chi square: {chi_squared}")
+                # smooth_range = np.linspace(np.min(grp_a),np.max(grp_a),100)
                 # add values needed for regression to regression_dict
                 if initial_grp in regression_dict.keys():
                     regression_dict[initial_grp][0].append(grp_a)
@@ -142,13 +144,30 @@ def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, 
     # generate final plot
     plt.errorbar(grp_a, grp_means, yerr=0.2*np.array(grp_means), color=color_dict[str(initial_grp)], label=f"{initial_grp} us", fmt='o')
     # generate polynomial fits and plot them
+    polyfit_strings = []
+    chisquare_values = []
+    initial_grp_strs = []
     for initial_grp in regression_dict.keys():
         if config.verbose > 0: print(f"regression plot for group: {initial_grp}")
         grp_a = regression_dict[initial_grp][0][0]
         grp_means = regression_dict[initial_grp][1][0]
-        fitted_values = generate_polynomial_fit(grp_a,grp_means,2)
+        grp_means = np.array(grp_means)
+        mask = ~np.isnan(grp_means)
+        grp_means = grp_means[mask]
+        grp_a = np.array(grp_a)
+        grp_a = grp_a[mask]
+        print(f"grp a: {grp_a}")
+        print(f"grp means: {grp_means}")
+        if grp_a.size <= config.set_degree or grp_means.size <= config.set_degree:
+            print("zero found")
+            continue
+        fitted_values = generate_polynomial_fit(grp_a[config.min_fit_range:config.max_fit_range],grp_means[config.min_fit_range:config.max_fit_range],config.set_degree)
         smooth_range = np.linspace(np.min(grp_a),np.max(grp_a),100)
-        plt.plot(smooth_range, fitted_values(smooth_range), color_dict[str(initial_grp)])
+        chi_squared = np.sum((np.polyval(fitted_values, grp_a) - grp_means) ** 2)
+        chisquare_values.append(chi_squared)
+        polyfit_strings.append(fitted_values)
+        initial_grp_strs.append(initial_grp)
+        plt.plot(smooth_range/initial_grp, fitted_values(smooth_range)/initial_grp, color_dict[str(initial_grp)], label=f"{initial_grp} best fit", linestyle='-')
     # create text box with filter names and values
     filter_keys = list(filter_dict.keys())
     filter_vals = list(filter_dict.values())
@@ -157,6 +176,17 @@ def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, 
         new_str = f"{filter_keys[i]} = {filter_vals[i]}\n"
         filter_str_list.append(new_str)
     mega_string = "".join(filter_str_list)
+    data = {
+    'Pulse Width': initial_grp_strs,
+    'Polyfit': polyfit_strings,
+    'Chisquare': chisquare_values
+    }
+    poly_data_table = pd.DataFrame(data)
+    print(mega_string)
+    print(poly_data_table)
+
+    # Create the DataFrame
+    df = pd.DataFrame(data)
     # draw plot features
     plt.text(
             0.7 * max(log_df[a]),  # X-coordinate (adjust based on your plot range)
@@ -166,9 +196,9 @@ def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, 
             color="purple",
             bbox=dict(facecolor='white', alpha=0.7, edgecolor='purple')  # Optional styling
         )
-    ax.set_title(f"{a} vs {b}, Grouped By {group_var} ({unit_dict[group_var]})")
-    ax.set_xlabel(f"{a}/us pulse (Gy/us)")
-    ax.set_ylabel(f"{b}/us pulse ({unit_dict[b]})")
+    ax.set_title(f"{a} Rate vs {b} Per Pulse, Grouped By {group_var} ({unit_dict[group_var]})")
+    ax.set_xlabel(f"{a} (Gy/us)")
+    ax.set_ylabel(f"{b} ({unit_dict[b]}/us)")
     ax.legend()
     plt.grid(True)
     plt.show()
