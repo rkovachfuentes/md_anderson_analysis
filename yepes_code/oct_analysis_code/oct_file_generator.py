@@ -1,4 +1,5 @@
 import config
+import warnings
 import csv
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,15 +16,33 @@ from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 from scipy.signal import ShortTimeFFT
 
-showPlot = True 
+showPlot = False 
 savePlot=True
 
 # dose_file includes scaling information for doses for different beams, distances
 dose_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/dose_scaling.csv"
 
-pulses=[0.5,1.0,2.0,3.0]
+pulses=np.array([0.5,1.0,2.0,3.0],dtype=float)
+
 range_dict = {"0.1":[699,np.inf],"0.5":[551, 1105],"1":[-np.inf,1121],"2":[-np.inf,1134],"3":[253,1103]}
 
+def find_widest_interval_in_numbers(data):
+    if len(data) < 2:
+        return None, None # Not enough elements to form an interval
+    
+    sorted_data = sorted(data)
+    max_width = 0
+    widest_interval = (None, None)
+    
+    for i in range(len(sorted_data) - 1):
+        # Calculate the width between adjacent elements
+        width = sorted_data[i+1] - sorted_data[i]
+        
+        if width > max_width:
+            max_width = width
+            widest_interval = (sorted_data[i], sorted_data[i+1])
+            
+    return widest_interval, max_width
 #==================================================================================================
 #
 #==================================================================================================
@@ -104,40 +123,48 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
 
     # Find indices where fluctuation exceeds the threshold
     fluctuation_indices = []
-    if pulse >= 1:
-        apparent_signal = w
-    else:
-        apparent_signal = signal
+    apparent_signal = w
+    signal_mean = np.mean(w)
     signal_min = np.min(apparent_signal)
     signal_max = np.max(apparent_signal)
     signal_range = signal_max-signal_min
     shifted_min  = signal_min+0.8*signal_range
-    threshold = 0.30 * signal_range
+    print("signal mean", signal_mean)
+    print("signal range", signal_range)
+    threshold = -(0.3 * signal_range) + signal_mean
+    save_this_threshold = threshold
+    save_this_mean = signal_mean
     currmin = signal_max
     currmin_i = 0
     if config.verbose>1: print("threshold", threshold)
+    if config.verbose>1: print(f"time\n {time[0:10]}")
+    if config.verbose>1: print(f"signal\n {signal[0:10]}")
     for i in range(5, len(apparent_signal)):
         req_width = 10
-        if abs(apparent_signal[i] - apparent_signal[i-5]) > threshold:
+        if (apparent_signal[i]) < (threshold): #  - apparent_signal[i-5]
             fluctuation_indices.append(i)
             if (apparent_signal[i] < currmin):
                 currmin = apparent_signal[i]
                 currmin_i = len(fluctuation_indices)-1
-    if config.verbose>1: print("fluctuation indices",fluctuation_indices)
+    if config.verbose>1: print(f"fluctuation indices: {fluctuation_indices[0:10]}")
     # Identify the start of fluctuations
+    found = False
+    i = 0
     if len(fluctuation_indices) > 1:
         fluctuation_indices.sort(reverse=False)
         start_of_fluctuations = fluctuation_indices[0]
-        if start_of_fluctuations <= 10:
-            fluctuation_indices = fluctuation_indices[1]
+        if config.verbose>1: print(f"start of fluctuations: {start_of_fluctuations}")
+        max_interval, max_width = find_widest_interval_in_numbers(fluctuation_indices)
+        start_of_fluctuations = max_interval[0]-1
         end_of_fluctuations = fluctuation_indices[-1]
+        if config.verbose>1: print(f"end of fluctuations: {end_of_fluctuations}")
         print(f"Signal starts fluctuating beyond 5% of max range at index {start_of_fluctuations}")
         print(f"Signal starts fluctuating beyond 5% of max range at index {end_of_fluctuations}")
     else:
         print("No significant fluctuation found.")
         start_of_fluctuations = 0
 
-    first_good_bin = start_of_fluctuations+int(5e-7/time_step)
+    # first_good_bin = start_of_fluctuations+int(5e-7/time_step)
     first_good_bin = 1
     last_good_bin = 1
 
@@ -151,8 +178,9 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
         # Update if the current difference is the largest increase
         if signal_difference > largest_increase:
             largest_increase = signal_difference
-            start_index = i - lookback_points
-            end_index = i
+            start_index = start_of_fluctuations - lookback_points
+            # start_index = i - lookback_points
+            end_index = i # + lookback_points
 
     # Initialize variables to track the largest increase
     largest_increase = -np.inf  # Start with the smallest possible number
@@ -185,16 +213,17 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
     # Shift the starting point by 0.1 microseconds
     shift_points = int(0.2e-6 / time_step)  # Number of points to shift earlier
     shifted_start_index = max(0, start_index)  # Ensure index is not negative  - shift_points
-    if pulse >= 1:
+    if pulse >= 0:
         print("pulse over 1")
         print("shifted start index") 
         print(shifted_start_index)
-        shifted_end_index = straight_line_across(time, signal, shifted_start_index, signal_range)
+        shifted_end_index, time, w = straight_line_across(time, w, shifted_start_index, signal_range)
+        print(f"length of time {len(time)}, length of signal {len(signal)}")
         if ((shifted_end_index - shifted_start_index) <= 100):
             too_narrow = True
             counter = 1
             while too_narrow:
-                new_end = straight_line_across(time, signal, shifted_end_index, signal_range)
+                new_end, time, signal = straight_line_across(time, signal, shifted_end_index, signal_range)
                 shifted_start_index = shifted_end_index
                 shifted_end_index = new_end
                 counter += 1
@@ -203,11 +232,12 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
     else:
         # the line commented out below is an alternate method which assumes a fixed pulse width
         # shifted_end_index = min(len(time) - 1, shifted_start_index + 3 * shift_points + int(pulse * 1e-6 / time_step))
-        shifted_end_index = straight_line_across(time, signal, shifted_start_index, signal_range)
-
+        shifted_end_index, time, signal = straight_line_across(time, signal, shifted_start_index, signal_range)
+    print("shifted start index", shifted_start_index)
+    print("shifted end index", shifted_end_index)
     # Determine the region to remove
     remove_start_index = shifted_start_index
-    remove_end_index = shifted_end_index
+    remove_end_index = shifted_end_index-1
 
     # count large oscillations in the signal region
     osc_count = 0
@@ -235,35 +265,54 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
     if config.verbose>1: print(f"LARGE OSC PERCENTAGE: {osc_percentage}")
     # Remove the area by setting the signal to NaN in this region
     signal_removed = np.copy(signal)
-    signal_removed[remove_start_index:remove_end_index + 1] = np.nan
+    print("start and end index", remove_start_index, remove_end_index)
+    print(f"start value: {signal_removed[remove_start_index]} end value: {signal_removed[remove_end_index+1]}")
+    signal_removed[remove_start_index:remove_end_index] = np.nan
+    
+    print(signal_removed[remove_end_index-5:remove_end_index+5])
+    print(signal_removed[remove_start_index-5:remove_start_index+5])
     if math.isnan(signal_removed[0]):
         signal_removed[0] = signal[0]
     if math.isnan(signal_removed[-1]):
         signal_removed[-1] = signal[-1]
+        # signal_removed[-1] =
 
     # Interpolate the missing values
     # if there is no signal: select 2 signal points to remove
     valid_mask = ~np.isnan(signal_removed)  # Mask to keep valid values
     if np.all(valid_mask == False):
-        valid_mask[-1] = True
+        valid_mask[-1] = False
         valid_mask[0] = True
+    print("interpolation inputs")
+    print(signal_removed[valid_mask][remove_end_index-5:remove_end_index+5])
     temp_interpolated_baseline = np.interp(time, time[valid_mask], signal_removed[valid_mask])
 
     baseline_smoothed = gaussian_filter(temp_interpolated_baseline, sigma=sigma)
 
     #  Interpolate the missing values after smoothing
+    drop_value = signal[remove_start_index]
     interpolated_baseline = np.interp(time, time[valid_mask], baseline_smoothed[valid_mask])
-
+    interpolated_baseline[~valid_mask] = drop_value
+    current_time = time[remove_end_index]
+    
+    time = np.insert(time,remove_end_index,current_time)
+    signal = np.insert(signal,remove_end_index,signal[remove_end_index])
+    interpolated_baseline = np.insert(interpolated_baseline,remove_end_index,drop_value)
     corrected_signal = signal-interpolated_baseline
 
     # adds saturation correction
-    saturation_corrected = saturation_correction(remove_start_index+savgol_peak_i, remove_start_index+savgol_neg_peak_i, time, corrected_signal, w, exp_mode=True)
-    saturation_corrected_linear = saturation_correction(remove_start_index+savgol_peak_i, remove_start_index+savgol_neg_peak_i, time, corrected_signal, w, exp_mode=False)
+    if show_saturation_correction:
+        saturation_corrected = saturation_correction(remove_start_index+savgol_peak_i, remove_start_index+savgol_neg_peak_i, time, corrected_signal, w, exp_mode=True)
+        saturation_corrected_linear = saturation_correction(remove_start_index+savgol_peak_i, remove_start_index+savgol_neg_peak_i, time, corrected_signal, w, exp_mode=False)
+    else:
+        saturation_corrected = []
+        saturation_corrected_linear = []
     # calculate the area under the interpolated curve in the removed region
-    removed_time = time[remove_start_index:remove_end_index + 1]  # Time in the removed region
-    corrected_signal_removed_values = corrected_signal[remove_start_index:remove_end_index + 1]
-    signal_removed_values = signal[remove_start_index:remove_end_index + 1]
+    removed_time = time[remove_start_index:remove_end_index]  # Time in the removed region
+    corrected_signal_removed_values = corrected_signal[remove_start_index:remove_end_index]
+    signal_removed_values = signal[remove_start_index:remove_end_index]
     signal_area   = abs(simpson(y=corrected_signal_removed_values, x=removed_time))
+    w = savgol_filter(signal, 200, 2)
 
     bins_around=30
     baseline_offset=0
@@ -295,12 +344,17 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
         print(f"Removed area end time: {time[remove_end_index]:.6e} s")
         print(f"Area under interpolated curve in signal region: {signal_area:.3e} ")
 
+    print(interpolated_baseline[remove_start_index-5:remove_start_index+5])
+    print(interpolated_baseline[remove_end_index-5:remove_end_index+5])
+
     # Visualization
     if savePlot:
         plt.figure(figsize=(10, 6))
         plt.plot(time, signal, label="Original Signal", color="blue")
         plt.plot(time, corrected_signal, label="Corrected Signal", color="green")
         plt.plot(time, interpolated_baseline, label="Interpolated Baseline", color="red")
+        plt.plot(time[remove_start_index],interpolated_baseline[remove_start_index], marker='o', color='purple')
+        plt.plot(time[remove_end_index],interpolated_baseline[remove_end_index], marker='o', color='purple')
         plt.plot(time, w, 'black', label="smoothed signal (savgol)")  # high frequency noise removed
         if show_saturation_correction:
             plt.plot(time, saturation_corrected, 'purple', label="saturation corrected - exponential")
@@ -309,13 +363,15 @@ def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 8
         plt.axvline(time[shifted_start_index], color="green", linestyle="--", label="Shifted Start")
         plt.scatter(time[remove_start_index+savgol_peak_i], corrected_signal[remove_start_index+savgol_peak_i], color='purple', marker='x', label="oscillation peaks", zorder=2)
         plt.scatter(time[remove_start_index+savgol_neg_peak_i], corrected_signal[remove_start_index+savgol_neg_peak_i], color='purple', marker='x', zorder=2)
+        plt.hlines(y=save_this_mean, xmin=time[0],xmax=time[-1], color='purple',linestyle='--',label="signal mean")
+        plt.hlines(y=save_this_threshold, xmin=time[0], xmax=time[-1],color='yellow', linestyle='--',label="signal threshold")
         plt.xlabel("Time (s)")
         plt.ylabel("Signal")
         plt.title("Signal Suppression and Interpolation")
         plt.text(
             0.6 * max(time),  # X-coordinate (adjust based on your plot range)
             min(signal)+0.05 * (max(signal)-min(signal)),  # Y-coordinate (adjust based on your plot range)
-            f"Signal Area: {signal_area:.3e}\nPulse: {pulse}\nZ: {Z}\nHV: {HV}\nosc_count: {osc_count}\nfile: {file_path[-14:-1]}v\nchannel: {selected_channel}",
+            f"Signal Area: {signal_area:.3e}\nBeam: {beam}\nPulse: {pulse}\nZ: {Z}\nHV: {HV}\nosc_count: {osc_count}\nfile: {file_path[-14:-1]}v\nchannel: {selected_channel}",
             fontsize=12,
             #color="purple",
             bbox=dict(facecolor='white', alpha=0.7, edgecolor='purple')  # Optional styling
@@ -407,16 +463,18 @@ def cleanup_files(directory_name, range_dict):
 def straight_line_across(time_data, channel_data, drop_idx, signal_range):
     concat_channel_data = channel_data[(drop_idx):]
     drop_value = channel_data[drop_idx]
+    return_value = 0
+    # if config.verbose > 1: print(f"drop value: {drop_value}")
     indices = [i for i, x in enumerate(concat_channel_data) if x >= drop_value]
     prev = 0
     for idx in indices:
         if (idx - prev) > 100:
+            return_value = idx+drop_idx
             break
     if config.verbose > 1:
-        print("returning value",channel_data[drop_idx+idx])
-        print("drop idx",drop_idx)
-        print("returning idx", drop_idx+idx)
-    return (drop_idx+idx)
+        print("returning value",channel_data[return_value])
+        print("drop value", channel_data[drop_idx])
+    return return_value, time_data, channel_data
 
 # separate_comment filters through the "comment" column of csv files and extracts the HV value from them, saving it to a separate
 # column in the file
@@ -542,7 +600,7 @@ def generator(log_file, output_file, date):
     pulse_tracker = []
     Detector = "SiC"
 
-    showPlot = True
+    showPlot = False
     if not os.path.exists(output_file):
         print("does not exist")
         df = pd.DataFrame(columns=['Detector','Channel','Beam','Pulse','Dose','X','Z','File','ch1_area','ch2_area','ch1_peaks','ch2_peaks', 'ch1_osc_count', 'ch2_osc_count'])
@@ -585,19 +643,28 @@ def generator(log_file, output_file, date):
                         continue
                 # get area for both ch1 and ch2
                 try:
-                    print("CHANNEL 1")
+                    print("file path")
+                    print(file_path)
+                    print("date")
+                    print(date)
+                    print("pulse")
+                    print(pulse)
+                    print(i)
                     ch1_signal_area, ch1_signal_peak, ch1_osc = get_area(file_path, range_dict, date, pulse=pulse,ifile=i, selected_channel="CH1")
-                    print("outputs")
-                    print(ch1_signal_area, ch1_signal_peak, ch1_osc)
-                    ch2_signal_area, ch2_signal_peak, ch2_osc = get_area(file_path, range_dict, date, pulse=pulse,ifile=i, selected_channel="CH2")
-                    print("oscs:")
-                    print(ch1_osc)
-                    print(ch2_osc)
-                except:
+                    print("ch1 successful")
+                    ch2_signal_area = np.nan
+                    ch2_signal_peak = np.nan
+                    ch2_osc = np.nan
+                    print("ch2 successful")
+                except Exception as e:
+                    print(f"Error reading CSV file: {e}")
+                    print("couldn't determine area")
                     break
-                if ((ch1_signal_area > 0.0) and (ch2_signal_area) > 0.0):
+                if ((ch1_signal_area > 0.0)):
                     print("appending new row")
-                    new_row_data = {'Detector': row['Detector'], 'Channel': row['Channel'], 'Beam': row['Beam'], 'Pulse': row['Pulse'], 'Dose': row['Dose'], 'HV': row['Comment'], 'X': row['X'], 'Z': row['Z'], 'File': file_path, 'ch1_area': ch1_signal_area, 'ch2_area': ch2_signal_area, 'ch1_peaks': ch1_signal_peak, 'ch2_peaks': ch2_signal_peak, 'ch1_osc_count': ch1_osc, 'ch2_osc_count': ch2_osc}
+                    new_dose = convert_dose_c_to_gy(dose_file, 0, row['Z'], row['Pulse'], 2, dist_from_col=True)
+                    new_row_data = {'Detector': row['Detector'], 'Channel': row['Channel'], 'Beam': row['Beam'], 'Pulse': row['Pulse'], 'Dose': new_dose, 'HV': row['Comment'], 'X': row['X'], 'Z': row['Z'], 'File': file_path, 'ch1_area': ch1_signal_area, 'ch2_area': ch2_signal_area, 'ch1_peaks': ch1_signal_peak, 'ch2_peaks': ch2_signal_peak, 'ch1_osc_count': ch1_osc, 'ch2_osc_count': ch2_osc}
+                    print(new_row_data)
                     new_row_df = pd.DataFrame([new_row_data])
                     # Concatenate the DataFrames
                     output_file_df = pd.concat([output_file_df, new_row_df], ignore_index=True)
@@ -614,7 +681,7 @@ def generator(log_file, output_file, date):
     return(output_file)
 
 def convert_dose_c_to_gy(dose_ref_csv, dose_c, dist_cm, pulse_width_us, collimator_length_cm, dist_from_col=True):
-    dose_df = pd.read_csv(dose_ref_csv)
+    dose_df = pd.read_csv(dose_ref_csv,skiprows=2)
     print(dose_df.head)
     print("unique values")
     print(dose_df["Collimation (cm, diameter)"].unique())
@@ -628,7 +695,9 @@ def convert_dose_c_to_gy(dose_ref_csv, dose_c, dist_cm, pulse_width_us, collimat
         x_points = dose_df["dist. collimator exit (m)"]
     else:
         x_points = dose_df["dist. beam exit (m)"]
-    y_points = dose_df["Gy/P"]/dose_df["PW (electron pulse, us, FWHM)"]
+    print(dose_df["Gy/P"])
+    print(dose_df["PW (electron pulse, us, FWHM)"])
+    y_points = (dose_df["Gy/P"]).astype(float)/(dose_df["PW (electron pulse, us, FWHM)"]).astype(float)
     print("x and y points")
     print(x_points)
     print(y_points)
@@ -643,8 +712,12 @@ def convert_dose_c_to_gy(dose_ref_csv, dose_c, dist_cm, pulse_width_us, collimat
     return(dose_gy)
 
 # generator("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-11-20-log.csv", "november_output.csv", "2025-11-20")
+# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-11-20/scope-results-2025-11-20-0137.csv", range_dict, "2025-11-20", pulse=0.5, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1", show_saturation_correction=False)
+# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-11-20/scope-results-2025-11-20-1589.csv", range_dict, "2025-11-20", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1", show_saturation_correction=False)
+
 ##### SOME USEFUL TEST FILES FOR AREA TESTING
 # testing on a single file with a lot of oscillations
+# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1", show_saturation_correction=True)
 # get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH2", show_saturation_correction=True)
 
 # a single file with very few oscillations

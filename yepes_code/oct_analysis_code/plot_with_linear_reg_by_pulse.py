@@ -142,7 +142,7 @@ def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, 
         regression_dict[initial_grp][0].append(grp_a)
         regression_dict[initial_grp][1].append(grp_means)
     # generate final plot
-    plt.errorbar(grp_a, grp_means, yerr=0.2*np.array(grp_means), color=color_dict[str(initial_grp)], label=f"{initial_grp} us", fmt='o')
+    plt.errorbar(grp_a/initial_grp, grp_means/initial_grp, yerr=0.2*np.array(grp_means), color=color_dict[str(initial_grp)], label=f"{initial_grp} us", fmt='o')
     # generate polynomial fits and plot them
     polyfit_strings = []
     chisquare_values = []
@@ -161,13 +161,16 @@ def plot_a_vs_b_with_linreg(log_file, a, b, group_var, filter_dict={None:None}, 
         if grp_a.size <= config.set_degree or grp_means.size <= config.set_degree:
             print("zero found")
             continue
-        fitted_values = generate_polynomial_fit(grp_a[config.min_fit_range:config.max_fit_range],grp_means[config.min_fit_range:config.max_fit_range],config.set_degree)
-        smooth_range = np.linspace(np.min(grp_a),np.max(grp_a),100)
-        chi_squared = np.sum((np.polyval(fitted_values, grp_a) - grp_means) ** 2)
-        chisquare_values.append(chi_squared)
-        polyfit_strings.append(fitted_values)
-        initial_grp_strs.append(initial_grp)
-        plt.plot(smooth_range/initial_grp, fitted_values(smooth_range)/initial_grp, color_dict[str(initial_grp)], label=f"{initial_grp} best fit", linestyle='-')
+        try:
+            fitted_values = generate_polynomial_fit(grp_a[config.min_fit_range:config.max_fit_range],grp_means[config.min_fit_range:config.max_fit_range],config.set_degree)
+            smooth_range = np.linspace(np.min(grp_a),np.max(grp_a),100)
+            chi_squared = np.sum((np.polyval(fitted_values, grp_a) - grp_means) ** 2)
+            chisquare_values.append(chi_squared)
+            polyfit_strings.append(fitted_values)
+            initial_grp_strs.append(initial_grp)
+            plt.plot(smooth_range/initial_grp, fitted_values(smooth_range)/initial_grp, color_dict[str(initial_grp)], label=f"{initial_grp} best fit", linestyle='-')
+        except:
+            pass
     # create text box with filter names and values
     filter_keys = list(filter_dict.keys())
     filter_vals = list(filter_dict.values())
