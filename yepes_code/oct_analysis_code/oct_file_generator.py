@@ -743,10 +743,11 @@ def straight_line_across(time_data, channel_data, drop_idx, signal_range):
     # if config.verbose > 1: print(f"drop value: {drop_value}")
     indices = [i for i, x in enumerate(concat_channel_data) if x >= drop_value]
     prev = 0
-    for idx in indices:
-        if (idx - prev) > 100:
-            return_value = idx+drop_idx
-            break
+    endpoints, width = find_widest_interval_in_numbers(indices)
+    print("ENDPOINTS")
+    print(endpoints)
+    print(endpoints[1])
+    return_value = endpoints[1]+drop_idx
     if config.verbose > 1:
         print("returning value",channel_data[return_value])
         print("drop value", channel_data[drop_idx])
