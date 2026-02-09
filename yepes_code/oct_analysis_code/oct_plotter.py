@@ -184,12 +184,30 @@ def plot_a_vs_b_both_mean(log_file, a, b, a_unit, b_unit, filter_var, filter_val
 # generate plots here
 # cleanup_output_file("final_oct_combined_file.csv")
 
-if __name__ == "__main__":
-    log_file = "oct_combined_file.csv"
-    log_df = pd.read_csv(log_file)
+def combine_files(filename1, filename2, output):
+    df1 = pd.read_csv(filename1, index_col=None, header=0)
+    df2 = pd.read_csv(filename2, index_col=None, header=0)
+    list_dfs = [df1, df2]
 
-    plot_a_vs_b_with_linreg(log_file, "Dose", "ch1_area", "Pulse", filter_dict={"Beam":"Electrons 110V","HV":"0"}, savePlot=True, no_3=False, no_means=False, per_pulse = False)
-    plot_a_vs_b_with_linreg(log_file, "Dose", "ch2_area", "Pulse", filter_dict={"Beam":"Electrons 110V","HV":"0"}, savePlot=True, no_3=False, no_means=False, per_pulse = False)
+    # Concatenate all dataframes in the list into a single dataframe
+    # axis=0 stacks them vertically (row-wise), which is the default
+    # ignore_index=True resets the index sequentially across the combined data
+    combined_df = pd.concat(list_dfs, axis=0, ignore_index=True)
+
+    # Export the combined dataframe to a new CSV file
+    combined_df.to_csv(output, index=False, encoding='utf-8')
+    return output
+
+if __name__ == "__main__":
+    # combine_files("14_oct_data.csv","15_oct_data.csv","14_and_15_oct_data.csv")
+
+    log_file = ".csv"
+    log_df = pd.read_csv(log_file)
+    print(log_df["ch1_area"])
+    print(log_df["Dose"])
+
+    plot_a_vs_b_with_linreg(log_file, "Dose", "ch1_area", "Pulse", filter_dict={"Beam":"Electrons 85V","HV":"HV 100"}, savePlot=True, no_3=False, no_means=False, per_pulse = False)
+    #plot_a_vs_b_with_linreg(log_file, "Dose", "ch2_area", "Pulse", filter_dict={"Beam":"Electrons 110V","HV":"0"}, savePlot=True, no_3=False, no_means=False, per_pulse = False)
 
     '''print(log_df.head)
     unique_beams = log_df['Beam'].unique()
@@ -198,7 +216,7 @@ if __name__ == "__main__":
     print(unique_hv)
     unique_hv = np.delete(unique_hv, 0)
     for hv in unique_hv:
-        hv.replace("V","")
+        hv = hv.replace("HV ", "")
         hv = int(hv)
 
     grouped_by_beam_hv = log_df.groupby(['Beam', 'HV'])
