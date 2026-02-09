@@ -391,7 +391,23 @@ def convert_dose(dose_ref_csv, dose_scale_factors_csv, beam, dist_cm, pulse_widt
 if __name__ == "__main__":
     sensor = "BNL"
     month, day = 10, 15
-    convert_dose(dose_file, dose_scale_file, 110, 60, 0.5, 2, dist_from_col=True)
+    
+    filename = f"retried-{month}_{day}_data.csv"
+    df = pd.read_csv(filename)
+    print(df.head)
+    df_new = df.drop(columns=['Dose'])
+    doses = []
+    for i in range(0,len(df_new)):
+        row = df_new.iloc[i]
+        print(row)
+        beam_name = row["Beam"].replace("Electrons ","")
+        beam_name = beam_name.replace("V","")
+        print(beam_name)
+        new_dose = convert_dose(dose_file, dose_scale_file, float(beam_name), float(row['Z']), float(row['Pulse']), 2, True)
+        doses.append(new_dose)
+    df_new['Dose'] = doses
+    df_new.to_csv(f"retried_{month}_{day}_with_dose.csv", index=False)
+
     '''with alive_bar(1000) as bar:
         for i in generator(f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-{month}-{day}-log.csv", f"retried-{month}_{day}_data.csv", f"2025-{month}-{day}", sensor):
             bar()'''
