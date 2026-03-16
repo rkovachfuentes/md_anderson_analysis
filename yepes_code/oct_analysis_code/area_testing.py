@@ -1,14 +1,10 @@
 import oct_file_generator
 import config
-import warnings
-import csv
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 import pandas as pd
 import math
-import re
-import sys
 import os
 from scipy.integrate import simpson  # Use `simpson` instead of `simps`
 from scipy.ndimage import gaussian_filter
@@ -106,7 +102,7 @@ def cleanup_files(directory_name, range_dict):
                 os.remove(full_path)
     return
 
-def backtrack_to_local_max(time, signal, current_point_idx):
+'''def backtrack_to_local_max(time, signal, current_point_idx):
     signal = savgol_filter(signal, 200, 2)
     step = 1
     current_point = signal[current_point_idx]
@@ -119,6 +115,24 @@ def backtrack_to_local_max(time, signal, current_point_idx):
         slopes = slope_list(time, signal, current_point_idx, 100)
         prev_slopes = slope_list(time, signal, current_point_idx-100, 100)
         if (current_point >= np.max(signal[current_point_idx:current_point_idx+500])) and (current_point > np.min(signal[current_point_idx-500:current_point_idx])):
+            if config.verbose > 1: print(f"current point return: {current_point_idx}")
+            return current_point_idx
+        else:
+            if config.verbose > 1: print("backtrack again")
+            return backtrack_to_local_max(time, signal, current_point_idx-step)
+    except Exception as e:
+        print(f"Exception: {e}")
+        return 0'''
+
+def backtrack_to_local_max(time, signal, current_point_idx):
+    step = 1
+    current_point = signal[current_point_idx]
+    # print(f"prev slope: {prev_slope}")
+    try:
+        slopes = slope_list(time, signal, current_point_idx, 100)
+        prev_slopes = slope_list(time, signal, current_point_idx-100, 100)
+        if (current_point >= np.max(signal[current_point_idx:current_point_idx+100])) and (current_point > np.min(signal[current_point_idx-100:current_point_idx])):
+            # print(check_if_flat(time[current_point_idx-500:current_point_idx], signal[current_point_idx-500:current_point_idx]))
             if config.verbose > 1: print(f"current point return: {current_point_idx}")
             return current_point_idx
         else:
@@ -379,7 +393,7 @@ def get_area_old(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electro
         plt.legend()
         plt.grid()
 
-        graphicDir = f"new-plot-dose-{date}/all_files"
+        graphicDir = f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/oct_analysis_code/unclean-{date}"
         if config.verbose > 1: print(graphicDir)
         if not os.path.exists(graphicDir):
             os.makedirs(graphicDir)
@@ -396,15 +410,9 @@ def get_area_old(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electro
 
     return signal_area, nPeaks, osc_count
 
-def combined_get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1", show_saturation_correction=False):
-    signal_area_list = signal_region_finder(file_path, range_dict, date, pulse, Z, HV, beam, ifile, selected_channel, show_saturation_correction, mode='old')
-    new_signal_area = signal_area_list[7]
-    if new_signal_area <= 1e-09:
-        print("failed to determine signal area, trying method 2...")
-        signal_area_list = signal_region_finder(file_path, range_dict, date, pulse, Z, HV, beam, ifile, selected_channel, show_saturation_correction, mode='new')
-        new_signal_area = signal_area_list[7]
+def plot_signal_region(signal_area_list, date, pulse, ifile, selected_channel):
     [time, signal, corrected_signal, remove_start_index, remove_end_index, shifted_start_index, interpolated_baseline, signal_area, beam, pulse, Z, HV, file_path, date, baseline_times, baseline_signals] = signal_area_list
-     # Visualization
+    # Visualization
     if savePlot:
         plt.figure(figsize=(10, 6))
         plt.plot(time, signal, label="Original Signal", color="blue")
@@ -412,7 +420,7 @@ def combined_get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="El
         plt.plot(time, interpolated_baseline, label="Interpolated Baseline", color="red")
         plt.plot(time[remove_start_index],interpolated_baseline[remove_start_index], marker='o', color='purple')
         plt.plot(time[remove_end_index],interpolated_baseline[remove_end_index], marker='o', color='purple')
-        plt.plot(baseline_times, baseline_signals, 'black', label="baseline signals for averaging")  # high frequency noise removed
+        # plt.plot(baseline_times, baseline_signals, 'black', label="baseline signals for averaging")  # high frequency noise removed
         plt.axvspan(time[remove_start_index], time[remove_end_index], color="yellow", alpha=0.3, label="Removed Region")
         plt.axvline(time[shifted_start_index], color="green", linestyle="--", label="Shifted Start")
         # plt.scatter(time[remove_start_index+savgol_peak_i], corrected_signal[remove_start_index+savgol_peak_i], color='purple', marker='x', label="oscillation peaks", zorder=2)
@@ -442,12 +450,21 @@ def combined_get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="El
             if config.verbose > 1: print(f"Directory already exists: {graphicDir}")
         graphicFile=f"{graphicDir}/dose-calc-pulse={pulse}-{ifile}-{selected_channel}.jpg"
         if config.verbose>2: print("graphicFile ", graphicFile)
-        plt.savefig(graphicFile, format="jpeg", dpi=300)
-        if showPlot:
+        if config.savePlot: plt.savefig(graphicFile, format="jpeg", dpi=300)
+        if config.showPlot:
             plt.show()
         plt.close()
 
-    return signal_area, 0, 0
+def combined_get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1", show_saturation_correction=False):
+    signal_area_list = signal_region_finder(file_path, range_dict, date, pulse, Z, HV, beam, ifile, selected_channel, show_saturation_correction, mode='old')
+    new_signal_area = signal_area_list[7]
+    if new_signal_area <= 1e-09:
+        print("failed to determine signal area, trying method 2...")
+        signal_area_list = signal_region_finder(file_path, range_dict, date, pulse, Z, HV, beam, ifile, selected_channel, show_saturation_correction, mode='new')
+        new_signal_area = signal_area_list[7]
+    plot_signal_region(signal_area_list, date, pulse, ifile, selected_channel)
+
+    return new_signal_area, 0, 0
             
 
 def get_area(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1", show_saturation_correction=False):
@@ -1006,7 +1023,7 @@ def signal_region_finder_new(file_path, range_dict, date, pulse=2, Z=60, HV=0, b
     
     return [time, signal, corrected_signal, remove_start_index, remove_end_index, shifted_start_index, interpolated_baseline, signal_area, beam, pulse, Z, HV, file_path, date, baseline_times, baseline_signals]
 
-def signal_region_finder(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1", show_saturation_correction=False, mode='old'):
+def signal_region_finder(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam="Electrons 85V", ifile=1560, selected_channel="CH1", show_saturation_correction=False, mode='old',new_start=None):
     npeaks_list = []
     corresponding_files = []
     pulse_widths = []
@@ -1098,6 +1115,9 @@ def signal_region_finder(file_path, range_dict, date, pulse=2, Z=60, HV=0, beam=
                 largest_increase = signal_difference
                 start_index = i - lookback_points
                 end_index = i
+    elif mode == 'manual':
+        start_index = np.argmin(np.abs(time - (new_start*1e-6)))
+        print(f"start index: {start_index}")
     else:
         start_index = start_of_fluctuations - lookback_points
 

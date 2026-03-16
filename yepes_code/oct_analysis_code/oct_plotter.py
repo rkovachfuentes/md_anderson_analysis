@@ -13,7 +13,6 @@ from scipy.signal import peak_widths
 from pathlib import Path
 from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
-from oct_file_generator import convert_dose_c_to_gy
 from plot_with_linear_reg_by_pulse import plot_a_vs_b_with_linreg
 
 # reference lists of beams and HV values

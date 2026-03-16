@@ -20,6 +20,7 @@ import area_testing
 
 showPlot = config.showPlot 
 savePlot = config.savePlot
+R_OHM = 50.0
 
 # dose_file includes scaling information for doses for different beams, distances
 dose_file = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/dose_scaling.csv"
@@ -303,10 +304,12 @@ def generator(log_file, output_file, date, sensor):
     output_file_df = pd.read_csv(output_file)
 
     for pulse in pulses:
+        print(f"pulse: {pulse}")
         matching_rows = log_df[
             (log_df["Detector"] == Detector) &
-            (log_df["Pulse"] == pulse)
+            (log_df["Pulse"] == str(pulse))
         ]
+        print(matching_rows)
         if config.verbose>1:
             print(f"MATCHING ROWS for {Detector} and {pulse}")
             print(matching_rows)
@@ -314,6 +317,9 @@ def generator(log_file, output_file, date, sensor):
         for _, row in matching_rows.iterrows():
             file_min = str(row["FileMin"])
             file_max = str(row["FileMax"])
+            Z = float(row["Z"])
+            HV = "?"
+            beam = row["Beam"]
             file_min_num = file_min.replace(f"/home/lgad/data/{date}/scope-results-{date}-", "")
             file_min_num = int(file_min_num.replace(".csv",""))
             file_max_num = file_max.replace(f"/home/lgad/data/{date}/scope-results-{date}-", "")
@@ -322,18 +328,24 @@ def generator(log_file, output_file, date, sensor):
                 file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", file_min)
                 file_path = row["FileMin"].replace(f"{file_min_num:04}",f"{i:04}")
                 file_path = file_path.replace("/home/lgad/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/")
+                if config.verbose > 0: print(f"file path: {file_path}")
                 if not os.path.exists(file_path):
-                    file_path = file_path.replace("CH1","CH2")
+                    # file_path = file_path.replace("CH1","CH2")
                     if not os.path.exists(file_path):
                         if config.verbose > 1: print("{file_path} does not exist, skip.")
                         continue
                 # get area for both ch1 and ch2
                 try:
-                    yield
                     print("ch1 computation")
-                    ch1_signal_area, ch1_signal_peak, ch1_osc = area_testing.combined_get_area(file_path, range_dict, date, pulse=pulse,ifile=i, selected_channel="CH1")
-                    print("ch2 computation")
-                    ch2_signal_area, ch2_signal_peak, ch2_osc = area_testing.combined_get_area(file_path, range_dict, date, pulse=pulse,ifile=i, selected_channel="CH2")
+                    ch1_signal_area, ch1_signal_peak, ch1_osc = area_testing.combined_get_area(file_path, range_dict, date, pulse=pulse,ifile=i, selected_channel="CH1", Z=Z, beam=beam, HV=HV)
+                    # area_testing.plot_signal_region(signal_area_list, date, pulse=1.0, ifile=1560, selected_channel="CH1")
+                    if config.verbose>-1:
+                        print(f"ch1 i {i} pulse {pulse} signal_area {ch1_signal_area}")
+                    # print("ch2 computation")
+                    # ch2_signal_area, ch2_signal_peak, ch2_osc = area_testing.combined_get_area(file_path, range_dict, date, pulse=pulse,ifile=i, selected_channel="CH2")
+                    ch2_signal_area, ch2_signal_peak, ch2_osc = 0, 0, 0
+                    if config.verbose>-1:
+                        print(f"ch2 i {i} pulse {pulse} signal_area {ch2_signal_area}")
                 except Exception as e:
                     print(f"Error reading CSV file: {e}")
                     print("couldn't determine area")
@@ -345,8 +357,6 @@ def generator(log_file, output_file, date, sensor):
                     new_row_df = pd.DataFrame([new_row_data])
                     # Concatenate the DataFrames
                     output_file_df = pd.concat([output_file_df, new_row_df], ignore_index=True)
-                    if config.verbose>-1:
-                        print(f"ch1 i {i} pulse {pulse} signal_area {ch1_signal_area}", )
                 else:
                     print("no signal area")
                     continue
@@ -387,12 +397,8 @@ def convert_dose(dose_ref_csv, dose_scale_factors_csv, beam, dist_cm, pulse_widt
     if config.verbose > 1: print(f"final dose: {dose_gy*scale_factor}")
     return(dose_gy*scale_factor)
 
-# generator("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-11-20-log.csv", "november_output.csv", "2025-11-20")
-if __name__ == "__main__":
-    sensor = "BNL"
-    month, day = 10, 15
-    
-    filename = f"retried-{month}_{day}_data.csv"
+def dose_for_csv(dose_ref_csv, dose_scale_factors_csv, input_file):
+    filename = input_file
     df = pd.read_csv(filename)
     print(df.head)
     df_new = df.drop(columns=['Dose'])
@@ -401,23 +407,188 @@ if __name__ == "__main__":
         row = df_new.iloc[i]
         print(row)
         beam_name = row["Beam"].replace("Electrons ","")
+        beam_name = beam_name.replace("Electron ","")
         beam_name = beam_name.replace("V","")
         print(beam_name)
-        new_dose = convert_dose(dose_file, dose_scale_file, float(beam_name), float(row['Z']), float(row['Pulse']), 2, True)
+        new_dose = convert_dose(dose_ref_csv, dose_scale_factors_csv, float(beam_name), float(row['Z']), float(row['pulsewidth']), 2, True)
         doses.append(new_dose)
     df_new['Dose'] = doses
-    df_new.to_csv(f"retried_{month}_{day}_with_dose.csv", index=False)
+    df_new.to_csv(input_file, index=False)
+    return
 
-    '''with alive_bar(1000) as bar:
-        for i in generator(f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-{month}-{day}-log.csv", f"retried-{month}_{day}_data.csv", f"2025-{month}-{day}", sensor):
-            bar()'''
+def manual_integration(log_file, output_file, detector):
+    log_df = pd.read_csv(log_file)
+    Z=None
+    HV=100.0
+    beam="Electrons 85V"
+    print(len(log_df[log_df['new_start'].notna()]['new_start']))
+    filtered_df = log_df[
+        (log_df["detector"] == detector) &
+        (log_df["new_start"].notna())
+    ].copy()   # ✅ Force real copy
+    print(filtered_df.head)
+    if detector=="Si Diode":
+        selected_channel = "CH1"
+    else:
+        selected_channel = "CH2"
+    new_areas = []
+    for _, row in filtered_df.iterrows():
+        start_coord = row["new_start"]
+        pulse = row["pulsewidth"]
+        file_path = row["filename_scope"]
+        date = file_path[-19:-9]
+        i = file_path[-8:-4]
+        i = i.lstrip('0')
+        if pd.notna(start_coord) and (start_coord is not None):
+            signal_list = area_testing.signal_region_finder(file_path, range_dict, date, pulse, Z, HV, beam, i, selected_channel, False, mode='manual',new_start=start_coord)
+            area_testing.plot_signal_region(signal_list, date, pulse, i, selected_channel)
+            ch1_signal_area = signal_list[7]
+            # ch1_signal_area, ch1_signal_peak, ch1_osc = area_testing.combined_get_area(file_path, range_dict, date, pulse=pulse,ifile=i, selected_channel=selected_channel, mode='manual',new_start=start_coord)
+            new_areas.append(ch1_signal_area)
+        else:
+            new_areas.append(np.nan)
+    filtered_df["new_area"] = new_areas
+    print(new_areas)
+    filtered_df.to_csv(output_file,index=False)
+    # output_file_df = output_file_df.dropna(subset=['ch1_osc_count', 'ch1_osc_count'])
+    return
 
+def replace_area(file1, file2, detector, key_column="filename_scope", output_file="plot_ready_manual_starts.csv"):
+    # Load files
+    df1 = pd.read_csv(file1)
+    df2 = pd.read_csv(file2)
+    df1 = df1[df1["detector"] == detector]
+    df2 = df2[df2["detector"] == detector]
 
+    # Keep only key + area from file2
+    df2_subset = df2[[key_column, "Area_Vs"]]
+
+    # Merge area from file2 into file1
+    merged = df1.merge(df2_subset, on=key_column, how="left", suffixes=("", "_new"))
+
+    # Replace area where new value exists
+    merged["Area_Vs"] = merged["Area_Vs_new"].combine_first(merged["Area_Vs"])
+    charges_nc = (merged['Area_Vs'] / R_OHM) * 1e9
+    merged["Q_nC"] = charges_nc
+
+    # Drop helper column
+    merged = merged.drop(columns=["Area_Vs_new"])
+
+    # Save result
+    merged.to_csv(output_file, index=False)
+
+    print(f"Updated file saved to {output_file}")
+    return
+
+def concatenate_csv(file1, file2, output_file="combined.csv"):
+    # Read both files
+    df1 = pd.read_csv(file1)
+    df2 = pd.read_csv(file2)
+
+    # Optional: verify columns match
+    if list(df1.columns) != list(df2.columns):
+        raise ValueError("CSV files do not have identical column names in the same order.")
+
+    # Concatenate row-wise
+    combined = pd.concat([df1, df2], ignore_index=True)
+
+    # Save result
+    combined.to_csv(output_file, index=False)
+
+    print(f"Combined file saved to {output_file}")
+
+import pandas as pd
+
+def find_grouped_outliers(csv_file):
+    """
+    Reads a CSV file and identifies outliers in Q_nC
+    per (pulsewidth, Z) group using the IQR method.
     
-    '''sensor = "BNL"
-    month, day = 10, 15
-    generator(f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-{month}-{day}-log.csv", f"{month}_{day}_data.csv", f"2025-{month}-{day}", sensor)'''
+    Returns:
+        DataFrame containing only outlier rows.
+    """
+    
+    df = pd.read_csv(csv_file)
+    
+    # List to collect outlier rows
+    outlier_rows = []
+    
+    # Group by pulsewidth and Z
+    grouped = df.groupby(["pulsewidth", "Z"])
+    
+    for (pulsewidth, Z), group in grouped:
+        
+        # Skip small groups (optional but recommended)
+        if len(group) < 4:
+            continue
+        
+        Q1 = group["Q_nC"].quantile(0.25)
+        Q3 = group["Q_nC"].quantile(0.75)
+        IQR = Q3 - Q1
+        
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        
+        mask = (group["Q_nC"] < lower_bound) | (group["Q_nC"] > upper_bound)
+        
+        outliers = group[mask]
+        
+        outlier_rows.append(outliers)
+    
+    if outlier_rows:
+        outlier_df = pd.concat(outlier_rows)
+    else:
+        outlier_df = pd.DataFrame(columns=df.columns)
+    
+    return outlier_df
+
+
+# generator("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-11-20-log.csv", "november_output.csv", "2025-11-20")
+if __name__ == "__main__":
+    
+    #sensor = "SiC"
+    #month, day = 11, 20
+
+    '''manual_integration("second_round_cleaning.csv","second_round_manual.csv","LGAD")
+    manual_integration("third_round_cleaning.csv","third_round_manual.csv","LGAD")
+
+    replace_area("output_combined_oct_processed_data.csv","second_round_manual.csv","LGAD",output_file="second_round.csv")
+    replace_area("second_round.csv","third_round_manual.csv","LGAD",output_file="third_round.csv")
+
+    df = pd.read_csv("third_round.csv")
+    df_dropped = df[df["filename_scope"] != "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0317.csv"]
+    df.to_csv("recovered_lgad_final.csv")'''
+
+    '''df = pd.read_csv("final.csv")
+    print(df[df["Z"]==125])
+
+    indices_to_drop = df[(df["Z"]==75)].index
+    print(indices_to_drop)
+    # Drop those rows using their indices
+    # Use inplace=True to modify the original DataFrame (optional)
+    df.drop(indices_to_drop, inplace=True) 
+    df.to_csv("tmp_diode.csv")'''
+
+    #concatenate_csv("plot_ready_manual_starts.csv","plot_ready_manual_start_LGAD.csv","final_LGAD.csv")
+    
+    sensor = "SiC"
+    month, day = 11, 20
+    # dose_for_csv(dose_file, dose_scale_file, "sic_data.csv")
+    generator(f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-{month}-{day}-log.csv", f"{month}_{day}_data.csv", f"2025-{month}-{day}", sensor)
     # generator("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-11-20-log.csv", "nov_data.csv", "2025-11-20")
+    '''
+    manual_integration(
+        "third_round_cleaning.csv",
+        "manually_integrated_LGAD_3.csv",
+        "LGAD"
+    )
+
+    df = pd.read_csv("manually_integrated_LGAD_3.csv")
+    df = df.rename(columns={'new_area': 'Area_Vs'})
+    df.to_csv("third_round_cleaning.csv")
+
+    replace_area("final_LGAD.csv","second_round_cleaning.csv","LGAD",output_file="final_LGAD.csv")
+    '''
 
 ##### SOME USEFUL TEST FILES FOR AREA TESTING
 # testing on a single file with a lot of oscillations
