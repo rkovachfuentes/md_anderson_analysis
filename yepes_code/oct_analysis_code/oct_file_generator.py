@@ -17,6 +17,8 @@ from scipy.optimize import curve_fit
 from scipy.signal import savgol_filter
 from scipy.signal import ShortTimeFFT
 import area_testing
+from tqdm import trange
+from scipy.signal import medfilt
 
 showPlot = config.showPlot 
 savePlot = config.savePlot
@@ -171,14 +173,16 @@ def straight_line_across(time_data, channel_data, drop_idx, signal_range):
     concat_channel_data = channel_data[(drop_idx):]
     drop_value = channel_data[drop_idx]
     return_value = 0
+    clean_step = medfilt(channel_data, kernel_size=101) 
+    w = savgol_filter(clean_step, 51, 1)
     # if config.verbose > 1: print(f"drop value: {drop_value}")
     indices = [i for i, x in enumerate(concat_channel_data) if x >= drop_value]
     prev = 0
     endpoints, width = find_widest_interval_in_numbers(indices)
     return_value = endpoints[1]+drop_idx
     if config.verbose > 1:
-        print("returning value",channel_data[return_value])
-        print("drop value", channel_data[drop_idx])
+        print("returning value",w[return_value])
+        print("drop value", w[drop_idx])
     return return_value, time_data, channel_data
 
 # separate_comment filters through the "comment" column of csv files and extracts the HV value from them, saving it to a separate
@@ -302,6 +306,7 @@ def generator(log_file, output_file, date, sensor):
         df = pd.DataFrame(columns=['Detector','Channel','Beam','Pulse','Dose','X','Z','File','ch1_area','ch2_area','ch1_peaks','ch2_peaks', 'ch1_osc_count', 'ch2_osc_count'])
         df.to_csv(output_file)
     output_file_df = pd.read_csv(output_file)
+    results_list = []
 
     for pulse in pulses:
         print(f"pulse: {pulse}")
@@ -314,56 +319,63 @@ def generator(log_file, output_file, date, sensor):
             print(f"MATCHING ROWS for {Detector} and {pulse}")
             print(matching_rows)
             # print("matching rows ", matching_rows["Detector", "Beam", "Z", "X", "Pulse", "Dose"])
-        for _, row in matching_rows.iterrows():
-            file_min = str(row["FileMin"])
-            file_max = str(row["FileMax"])
-            Z = float(row["Z"])
-            HV = "?"
-            beam = row["Beam"]
-            file_min_num = file_min.replace(f"/home/lgad/data/{date}/scope-results-{date}-", "")
-            file_min_num = int(file_min_num.replace(".csv",""))
-            file_max_num = file_max.replace(f"/home/lgad/data/{date}/scope-results-{date}-", "")
-            file_max_num = int(file_max_num.replace(".csv",""))
-            for i in range(file_min_num, file_max_num + 1):
-                file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", file_min)
-                file_path = row["FileMin"].replace(f"{file_min_num:04}",f"{i:04}")
-                file_path = file_path.replace("/home/lgad/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/")
-                if config.verbose > 0: print(f"file path: {file_path}")
-                if not os.path.exists(file_path):
-                    # file_path = file_path.replace("CH1","CH2")
+            for _, row in matching_rows.iterrows():
+                file_min = str(row["FileMin"])
+                file_max = str(row["FileMax"])
+                Z = float(row["Z"])
+                HV = "?"
+                beam = row["Beam"]
+                file_min_num = file_min.replace(f"/home/lgad/data/{date}/scope-results-{date}-", "")
+                file_min_num = int(file_min_num.replace(".csv",""))
+                file_max_num = file_max.replace(f"/home/lgad/data/{date}/scope-results-{date}-", "")
+                file_max_num = int(file_max_num.replace(".csv",""))
+                for i in range(file_min_num, file_max_num + 1):
+                    file_path = re.sub(r'\d{4}(?=\.csv)', f"{i:04}", file_min)
+                    file_path = row["FileMin"].replace(f"{file_min_num:04}",f"{i:04}")
+                    file_path = file_path.replace("/home/lgad/data/","/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/")
+                    if config.verbose > 0: print(f"file path: {file_path}")
                     if not os.path.exists(file_path):
-                        if config.verbose > 1: print("{file_path} does not exist, skip.")
-                        continue
-                # get area for both ch1 and ch2
-                try:
-                    print("ch1 computation")
-                    ch1_signal_area, ch1_signal_peak, ch1_osc = area_testing.combined_get_area(file_path, range_dict, date, pulse=pulse,ifile=i, selected_channel="CH1", Z=Z, beam=beam, HV=HV)
-                    # area_testing.plot_signal_region(signal_area_list, date, pulse=1.0, ifile=1560, selected_channel="CH1")
-                    if config.verbose>-1:
-                        print(f"ch1 i {i} pulse {pulse} signal_area {ch1_signal_area}")
-                    # print("ch2 computation")
-                    # ch2_signal_area, ch2_signal_peak, ch2_osc = area_testing.combined_get_area(file_path, range_dict, date, pulse=pulse,ifile=i, selected_channel="CH2")
-                    ch2_signal_area, ch2_signal_peak, ch2_osc = 0, 0, 0
-                    if config.verbose>-1:
-                        print(f"ch2 i {i} pulse {pulse} signal_area {ch2_signal_area}")
-                except Exception as e:
-                    print(f"Error reading CSV file: {e}")
-                    print("couldn't determine area")
-                    break
-                if ((ch1_signal_area > 0.0)):
-                    # new_dose = convert_dose_c_to_gy(dose_file, 0, row['Z'], row['Pulse'], 2, dist_from_col=True)
-                    new_dose = 0
-                    new_row_data = {'Detector': row['Detector'], 'Channel': row['Channel'], 'Beam': row['Beam'], 'Pulse': row['Pulse'], 'Dose': new_dose, 'HV': row['Comment'], 'X': row['X'], 'Z': row['Z'], 'File': file_path, 'ch1_area': ch1_signal_area, 'ch2_area': ch2_signal_area, 'ch1_peaks': ch1_signal_peak, 'ch2_peaks': ch2_signal_peak, 'ch1_osc_count': ch1_osc, 'ch2_osc_count': ch2_osc}
-                    new_row_df = pd.DataFrame([new_row_data])
-                    # Concatenate the DataFrames
-                    output_file_df = pd.concat([output_file_df, new_row_df], ignore_index=True)
-                else:
-                    print("no signal area")
-                    continue
-    print(output_file_df.head())
-    output_file_df.to_csv(output_file,index=False)
-    # output_file_df = output_file_df.dropna(subset=['ch1_osc_count', 'ch1_osc_count'])
-    return(output_file)
+                        # file_path = file_path.replace("CH1","CH2")
+                        if not os.path.exists(file_path):
+                            if config.verbose > 1: print("{file_path} does not exist, skip.")
+                            continue
+                    # get area for both ch1 and ch2
+                    try:
+                        if config.verbose > 0: print("ch1 computation")
+                        ch1_signal_area, ch1_signal_peak, ch1_osc = area_testing.combined_get_area(file_path, range_dict, date, pulse=pulse,ifile=i, selected_channel="CH1", Z=Z, beam=beam, HV=HV)
+                        # area_testing.plot_signal_region(signal_area_list, date, pulse=1.0, ifile=1560, selected_channel="CH1")
+                        if config.verbose>0:
+                            print(f"ch1 i {i} pulse {pulse} signal_area {ch1_signal_area}")
+                        # print("ch2 computation")
+                        # ch2_signal_area, ch2_signal_peak, ch2_osc = area_testing.combined_get_area(file_path, range_dict, date, pulse=pulse,ifile=i, selected_channel="CH2")
+                        ch2_signal_area, ch2_signal_peak, ch2_osc = 0, 0, 0
+                        if config.verbose>0:
+                            print(f"ch2 i {i} pulse {pulse} signal_area {ch2_signal_area}")
+                        results_list.append({
+                            'Detector': row['Detector'],
+                            'Channel': row['Channel'],
+                            'Beam': row['Beam'],
+                            'Pulse': row['Pulse'],
+                            'Dose': np.nan,
+                            'HV': row['Comment'],
+                            'X': row['X'],
+                            'Z': row['Z'],
+                            'File': file_path,
+                            'ch1_area': ch1_signal_area,
+                            'ch2_area': 0,
+                            'ch1_peaks': ch1_signal_peak,
+                            'ch2_peaks': 0,
+                            'ch1_osc_count': ch1_osc,
+                            'ch2_osc_count': 0
+                        })
+                    except Exception as e:
+                        if config.verbose > 0:
+                            print(f"Error reading CSV file: {e}")
+                            print("couldn't determine area")
+                        break
+    output_df = pd.DataFrame(results_list)
+    output_df.to_csv(output_file, index=False)
+    return output_file
 
 def convert_dose(dose_ref_csv, dose_scale_factors_csv, beam, dist_cm, pulse_width, collimator_length_cm, dist_from_col=True):
     # convert cm to m for lookup table
@@ -542,40 +554,37 @@ def find_grouped_outliers(csv_file):
     
     return outlier_df
 
+def inspect_point(csv_file, detector_name="SiC", pulse=1.0, beam="110"):
+    df = pd.read_csv(csv_file)
+    df = df[df['Pulse']]
+
 
 # generator("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-11-20-log.csv", "november_output.csv", "2025-11-20")
 if __name__ == "__main__":
-    
-    #sensor = "SiC"
-    #month, day = 11, 20
-
-    '''manual_integration("second_round_cleaning.csv","second_round_manual.csv","LGAD")
-    manual_integration("third_round_cleaning.csv","third_round_manual.csv","LGAD")
-
-    replace_area("output_combined_oct_processed_data.csv","second_round_manual.csv","LGAD",output_file="second_round.csv")
-    replace_area("second_round.csv","third_round_manual.csv","LGAD",output_file="third_round.csv")
-
-    df = pd.read_csv("third_round.csv")
-    df_dropped = df[df["filename_scope"] != "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0317.csv"]
-    df.to_csv("recovered_lgad_final.csv")'''
-
-    '''df = pd.read_csv("final.csv")
-    print(df[df["Z"]==125])
-
-    indices_to_drop = df[(df["Z"]==75)].index
-    print(indices_to_drop)
-    # Drop those rows using their indices
-    # Use inplace=True to modify the original DataFrame (optional)
-    df.drop(indices_to_drop, inplace=True) 
-    df.to_csv("tmp_diode.csv")'''
-
-    #concatenate_csv("plot_ready_manual_starts.csv","plot_ready_manual_start_LGAD.csv","final_LGAD.csv")
-    
     sensor = "SiC"
     month, day = 11, 20
     # dose_for_csv(dose_file, dose_scale_file, "sic_data.csv")
     generator(f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-{month}-{day}-log.csv", f"{month}_{day}_data.csv", f"2025-{month}-{day}", sensor)
     # generator("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-2025-11-20-log.csv", "nov_data.csv", "2025-11-20")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     '''
     manual_integration(
         "third_round_cleaning.csv",
@@ -589,14 +598,3 @@ if __name__ == "__main__":
 
     replace_area("final_LGAD.csv","second_round_cleaning.csv","LGAD",output_file="final_LGAD.csv")
     '''
-
-##### SOME USEFUL TEST FILES FOR AREA TESTING
-# testing on a single file with a lot of oscillations
-# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1", show_saturation_correction=True)
-# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0339.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH2", show_saturation_correction=True)
-
-# a single file with very few oscillations
-# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-0897.csv", range_dict, "2025-10-15", pulse=1, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
-
-# a weird one
-# get_area("/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data/2025-10-15/scope-results-2025-10-15-1272.csv", range_dict, "2025-10-15", pulse=3, Z=50, HV=100, beam="Electrons 85V", ifile=1560, selected_channel="CH1" )
