@@ -1,5 +1,5 @@
 import config
-from alive_progress import alive_bar; import time
+# from alive_progress import alive_bar; import time
 import warnings
 import csv
 import numpy as np

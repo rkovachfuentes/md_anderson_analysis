@@ -32,7 +32,7 @@ class ExperimentGenerator:
         f_max = int(match_max.group(1))
         
         paths = []
-        local_base_dir = "/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/data"
+        local_base_dir = "/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/data"
 
         for i in range(f_min, f_max + 1):
             # 1. Get just the filename (e.g., scope-results-2025-10-14-0775.csv)
@@ -56,7 +56,7 @@ class ExperimentGenerator:
         max_z = 150
         min_pulse = 1.0
         HV = 100
-        print(self.log_df.columns)
+        # print(self.log_df.columns)
         # Convert column to numeric, turning errors (like 'abc') into NaN
         self.log_df['Z'] = pd.to_numeric(self.log_df['Z'], errors='coerce')
         # Drop rows where the column is now NaN
@@ -113,6 +113,8 @@ class ExperimentGenerator:
     def save(self):
         if self.results:
             lengths = [len(r) for r in self.results]
+        else:
+            lengths = []
         if len(set(lengths)) > 1:
             print("Warning: Inconsistent dictionary lengths found in results!")
         pd.DataFrame(self.results).to_csv(self.output_path, index=False)
@@ -121,9 +123,9 @@ if __name__ == "__main__":
     # --- Configuration ---
     DATE = "2025-10-14"
     SENSOR = "BNL"
-    LOG_PATH = f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/log_files/lgad-{DATE}-log.csv"
-    CHANNEL = "CH2"
-    OUTPUT_PATH = f"/Users/rkfuentes/Documents/md_anderson_analysis/yepes_code/oct_analysis_code/isolated_150_{SENSOR}_{DATE}_{CHANNEL}.csv"
+    LOG_PATH = f"/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/log_files/lgad-{DATE}-log.csv"
+    CHANNEL = "CH1"
+    OUTPUT_PATH = f"/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/analysis_code/waveforms/isolated_150_{SENSOR}_{DATE}_{CHANNEL}.csv"
 
     # --- Initialization ---
     # 1. Initialize the math engine (math from previous steps)

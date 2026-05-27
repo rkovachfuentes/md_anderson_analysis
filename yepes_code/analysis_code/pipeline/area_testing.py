@@ -101,23 +101,46 @@ def cleanup_files(directory_name, range_dict):
                 os.remove(full_path)
     return
 
-def backtrack_to_local_max(time, signal, current_point_idx):
+def backtrack_to_local_max(time, signal, start_point_idx):
+    # Establish absolute safe bounds based on your window size (100)
+    # This guarantees neither forward nor backward slices will ever be empty
+    min_safe_idx = 100
+    max_safe_idx = len(signal) - 100
+    
+    # If the starting point is structurally out of bounds, clip it safely
+    current_point_idx = max(min_safe_idx, min(start_point_idx, max_safe_idx))
+    
     step = 1
-    current_point = signal[current_point_idx]
-    # print(f"prev slope: {prev_slope}")
-    try:
-        slopes = slope_list(time, signal, current_point_idx, 100)
-        prev_slopes = slope_list(time, signal, current_point_idx-100, 100)
-        if (current_point >= np.max(signal[current_point_idx:current_point_idx+100])) and (current_point > np.min(signal[current_point_idx-100:current_point_idx])):
-            # print(check_if_flat(time[current_point_idx-500:current_point_idx], signal[current_point_idx-500:current_point_idx]))
-            if config.verbose > 1: print(f"current point return: {current_point_idx}")
-            return current_point_idx
-        else:
-            if config.verbose > 1: print("backtrack again")
-            return backtrack_to_local_max(time, signal, current_point_idx-step)
-    except Exception as e:
-        print(f"Exception: {e}")
-        return 0
+    
+    while current_point_idx >= min_safe_idx:
+        current_point = signal[current_point_idx]
+        
+        try:
+            # Safe forward and backward windows due to our min_safe_idx and max_safe_idx clamps
+            forward_window = signal[current_point_idx : current_point_idx + 100]
+            backward_window = signal[current_point_idx - 100 : current_point_idx]
+            
+            # Additional explicit guard: Verify both arrays actually contain elements
+            if forward_window.size == 0 or backward_window.size == 0:
+                if config.verbose > 1: print(f"Empty window guard triggered at index {current_point_idx}")
+                return current_point_idx
+            
+            # Evaluate the local peak criteria safely
+            if (current_point >= np.max(forward_window)) and (current_point > np.min(backward_window)):
+                if config.verbose > 1: print(f"Local maximum found at index: {current_point_idx}")
+                return current_point_idx
+            
+        except Exception as e:
+            print(f"Exception encountered inside backtrack loop: {e}")
+            return current_point_idx  # Return current position as fallback instead of breaking the pipeline
+        
+        # Step backward smoothly if criteria aren't met
+        current_point_idx -= step
+        
+    # Absolute bottom-out fallback if the loop exhausts down to index 100
+    if config.verbose > 1: print("Backtrack hit absolute lower safe limit (100)")
+    return min_safe_idx
+
 
 def plot_signal_region(signal_area_list, date, pulse, ifile, selected_channel):
     [time, signal, corrected_signal, remove_start_index, remove_end_index, shifted_start_index, interpolated_baseline, signal_area, beam, pulse, Z, HV, file_path, date, baseline_times, baseline_signals] = signal_area_list

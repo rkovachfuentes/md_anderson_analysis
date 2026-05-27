@@ -12,7 +12,7 @@ from scipy.signal import medfilt
 # External dependencies (assumed to be in your path)
 import oct_file_generator
 import config
-import pipeline.plot_with_linear_reg_by_pulse as plot_with_linear_reg_by_pulse
+import plot_with_linear_reg_by_pulse
 
 @dataclass
 class SignalResult:
