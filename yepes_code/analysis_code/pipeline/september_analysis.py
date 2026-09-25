@@ -166,290 +166,132 @@ def identify_real_curves(signal, noise_floor):
     # peaks contains only the indices of peaks that belong to large curves
     return peaks, properties
 
-def return_before_first_spike(signal, buffer=0, max_mode=False):
-    # =========================================================================
-    # STEP 1: DC BASELINE CORRECTION 
-    # =========================================================================
+import numpy as np
+
+def return_before_first_spike(signal, buffer=0, polarity="positive"):
     if signal is None or signal.size < 24:
         return signal.copy() if signal is not None else np.array([]), 0, 0
-    first_500 = signal[:500] if len(signal) >= 500 else signal
-    baseline_offset = np.median(first_500)
-    zero_centered_signal = signal - baseline_offset
     
-    # =========================================================================
-    # STEP 2: ROBUST NOISE AND ENVELOPE CALCULATION
-    # =========================================================================
-    sigma = np.std(zero_centered_signal[:500])
-    if sigma < 0.001: 
-        sigma = 0.001
+    # 1. Zero-center using the median of the quiet baseline (first 500 samples)
+    baseline_window = signal[:500] if len(signal) >= 500 else signal
+    baseline_offset = np.median(baseline_window)
+    zero_centered = signal - baseline_offset
+
+    # 2. Estimate noise strictly from the quiet baseline (ignore all peaks)
+    baseline_noise = np.std(zero_centered[:500])
     
-    pulse_peak_depth = np.abs(np.min(zero_centered_signal))
-    statistical_limit = 10.0 * sigma
-    peak_relative_floor = pulse_peak_depth * 0.15
-    absolute_hardware_floor = 0.010 
+    # Fallback in case the noise measurement is near zero
+    if baseline_noise < 1e-4:
+        baseline_noise = 0.0005  # 0.5 mV default noise floor
+
+    # 3. Set threshold strictly as 4x the baseline noise floor
+    # NO peak relative scaling, NO hardware floor offsets
+    sensitive_limit = 4.0 * baseline_noise
+
+    # Safety clamp: Ensure it never goes above 0.01 V (10 mV)
+    # even if baseline window accidentally contains a small spike
+    sensitive_limit = min(sensitive_limit, 0.010)
+
+    return zero_centered.copy(), 0, sensitive_limit
+
+def get_drop_event(time, signal, polarity="positive", min_consecutive_points=10, min_peak_amplitude=0.008):
+    """
+    Pulse event detector with transient spike filtering AND flat-line noise rejection.
     
-    sensitive_limit = max(statistical_limit, peak_relative_floor, absolute_hardware_floor)
-    short_window = 12
+    Parameters:
+        min_consecutive_points: Ignores narrow noise spikes.
+        min_peak_amplitude: Rejects flat traces where noise triggers consecutive 
+                            samples but lacks a true signal peak (e.g. requires >= 8 mV).
+    """
+    final_clean, end_of_error, threshold = return_before_first_spike(
+        signal, polarity=polarity
+    )
 
-    # =========================================================================
-    # FORWARD PASS (Standard Mode): Pure Split-Window Scan
-    # =========================================================================
-    pulse_start_idx = None
-    skip_until_idx = 0
-    clean_until = int(len(signal) * 0.10)
-
-    for idx in range(short_window, len(zero_centered_signal) - short_window):
-        if idx < skip_until_idx:
-            clean_until = idx
-            continue
-
-        left_win = zero_centered_signal[idx - short_window : idx]
-        right_win = zero_centered_signal[idx : idx + short_window]
-        
-        mean_left = np.mean(left_win)
-        mean_right = np.mean(right_win)
-        
-        if mean_right < -sensitive_limit and mean_right < mean_left:
-            if np.sum(right_win < -sigma) >= int(0.90 * short_window):
-                pulse_start_idx = idx
-                break
-
-        if np.abs(zero_centered_signal[idx]) <= sensitive_limit:
-            clean_until = idx
-        else:
-            pct_dropping = np.sum(np.diff(right_win) < 0) / len(right_win)
-            if pct_dropping < 0.45:
-                clean_until = idx
-                skip_until_idx = idx + 6  
-
-    # =========================================================================
-    # STEP 3: DYNAMIC DERIVATIVE BOUNDARY SNAPPING
-    # =========================================================================
-    if pulse_start_idx is not None:
-        corrected_start = pulse_start_idx
-        
-        while corrected_start > 3:
-            local_check = zero_centered_signal[corrected_start - 3 : corrected_start]
-            if np.mean(local_check) >= -1.5 * sigma:
-                break
-            corrected_start -= 1
-            
-        while corrected_start > 1:
-            current_point = zero_centered_signal[corrected_start]
-            left_point = zero_centered_signal[corrected_start - 1]
-            local_slope = current_point - left_point
-            if local_slope >= -0.5 * sigma:
-                break
-            corrected_start -= 1
-            
-        clean_until = corrected_start
-        
-        actual_buffer = 0
-        for b in range(1, buffer + 1):
-            target_idx = clean_until + b
-            if target_idx >= len(signal):
-                break
-            if zero_centered_signal[target_idx] < -sensitive_limit:
-                break
-            actual_buffer = b
-        clean_until = clean_until + actual_buffer
-    else:
-        clean_until = int(len(signal) * 0.10)
-
-    clean_until = max(0, min(clean_until, len(signal) - 1))
-
-    cleaned_signal = signal.copy()
-    cleaned_signal[0 : clean_until] = 0
-    
-    return cleaned_signal, clean_until, sensitive_limit
-
-'''
-def return_before_first_spike(signal, buffer=0, max_mode=False):
-    # =========================================================================
-    # STEP 1: DC BASELINE CORRECTION 
-    # =========================================================================
-    first_500 = signal[:500] if len(signal) >= 500 else signal
-    baseline_offset = np.median(first_500)
-    zero_centered_signal = signal - baseline_offset
-    
-    # =========================================================================
-    # STEP 2: ROBUST NOISE AND ENVELOPE CALCULATION
-    # =========================================================================
-    sigma = np.std(zero_centered_signal[:500])
-    if sigma < 0.001: 
-        sigma = 0.001
-    
-    pulse_peak_depth = np.abs(np.min(zero_centered_signal))
-    statistical_limit = 10.0 * sigma
-    peak_relative_floor = pulse_peak_depth * 0.15
-    absolute_hardware_floor = 0.010 
-    
-    sensitive_limit = max(statistical_limit, peak_relative_floor, absolute_hardware_floor)
-    short_window = 12
-
-    # =========================================================================
-    # MODE 2: BACKWARD PASS (max_mode=True) - Cleans Tail Spikes
-    # =========================================================================
-    if max_mode:
-        flipped_signal = np.flip(zero_centered_signal)
-        first_spike_idx = np.argmax(np.abs(flipped_signal))
-        
-        # Convert the true peak index back to standard forward coordinates
-        forward_peak_idx = len(signal) - 1 - first_spike_idx
-        
-        # Default fallback: Start cleaning from the peak to the end of the file
-        clean_from = forward_peak_idx 
-        
-        # Scan from the end of the flipped signal (the true tail end) up toward the peak
-        for idx in range(short_window, first_spike_idx):
-            next_block = flipped_signal[idx : idx + short_window]
-            diffs = np.diff(next_block)
-            pct_increasing = np.sum(diffs >= 0) / len(diffs)
-            
-            # The moment the tail stops being flat baseline and starts dropping/moving
-            # toward the main peak body, establish the cut-off boundary.
-            if pct_increasing < 0.75:
-                forward_idx = len(signal) - 1 - idx
-                clean_from = forward_idx
-                break
-                
-        # Apply user buffer, ensuring we never push the boundary past the peak itself
-        clean_from = max(forward_peak_idx, min(clean_from - buffer, len(signal) - 1))
-        
-        cleaned_signal = signal.copy()
-        
-        # WIPE TAIL SPIKES: Zero out everything after our detected boundary
-        cleaned_signal[clean_from : len(signal)] = 0
-        
-        return cleaned_signal, clean_from, sensitive_limit
-    # =========================================================================
-    # MODE 1: FORWARD PASS (max_mode=False) - Cleans Prefix Spikes
-    # =========================================================================
-    pulse_start_idx = None
-    skip_until_idx = 0
-    clean_until = int(len(signal) * 0.10)
-
-    for idx in range(short_window, len(zero_centered_signal) - short_window):
-        if idx < skip_until_idx:
-            clean_until = idx
-            continue
-
-        left_win = zero_centered_signal[idx - short_window : idx]
-        right_win = zero_centered_signal[idx : idx + short_window]
-        
-        mean_left = np.mean(left_win)
-        mean_right = np.mean(right_win)
-        
-        if mean_right < -sensitive_limit and mean_right < mean_left:
-            if np.sum(right_win < -sigma) >= int(0.90 * short_window):
-                pulse_start_idx = idx
-                break
-
-        if np.abs(zero_centered_signal[idx]) <= sensitive_limit:
-            clean_until = idx
-        else:
-            pct_dropping = np.sum(np.diff(right_win) < 0) / len(right_win)
-            if pct_dropping < 0.45:
-                clean_until = idx
-                skip_until_idx = idx + 6  
-
-    # =========================================================================
-    # STEP 3: DYNAMIC BOUNDARY SNAPPING (Restored with Tight Window Boundary)
-    # =========================================================================
-    if pulse_start_idx is not None:
-        # Define a strictly constrained zone to isolate ONLY the initial spike drop
-        # This prevents it from looking at the main pulse body further down the file
-        max_search_limit = min(pulse_start_idx + short_window, len(zero_centered_signal) - 1)
-        spike_body_zone = zero_centered_signal[pulse_start_idx : max_search_limit]
-        
-        if len(spike_body_zone) > 0:
-            local_drop_end = np.argmin(spike_body_zone)
-            absolute_spike_end = pulse_start_idx + local_drop_end
-            
-            # Stop zeroing out exactly where this initial spike drop ends
-            clean_until = absolute_spike_end + 1
-        else:
-            clean_until = pulse_start_idx
-
-        # !!! BUFFER FIX: Subtract the buffer to move the clean zone LEFT (backward),
-        # which safely protects the signal from being eaten.
-        clean_until = max(0, clean_until - buffer)
-    else:
-        # Safe fallback: only zero out the first 10% if no spike triggers
-        clean_until = int(len(signal) * 0.10)
-
-    # Hard array limit clamp to prevent complete file obliteration
-    clean_until = max(0, min(clean_until, len(signal) - 1))
-
-    # WIPE UNWANTED REGION (Wipes everything from 0 up to the frame where the spike ends)
-    cleaned_signal = signal.copy()
-    cleaned_signal[0 : clean_until] = 0
-    
-    return cleaned_signal, clean_until, sensitive_limit
-'''
-
-def get_drop_event(time, signal):
-    # Process standard forward signal pass
-    final_clean, end_of_error, threshold = return_before_first_spike(signal, max_mode=False)
-
-    # return immediately if there is no signal
     if final_clean is None or final_clean.size == 0:
-        return np.zeros_like(signal), False, None, None, -threshold
+        thresh_val = threshold if polarity == "positive" else -threshold
+        return np.zeros_like(signal), False, None, None, thresh_val
     
-    # Calculate baseline locally for zero-centering
     first_500 = signal[:500] if len(signal) >= 500 else signal
     baseline_offset = np.median(first_500)
+    zero_centered = final_clean - baseline_offset
     
-    sigma = np.std(signal[:500] - baseline_offset)
-    if sigma < 0.001: 
-        sigma = 0.001
-    
-    drop_threshold = -threshold
-    search_zone = final_clean[end_of_error:]
-    drop_indices = np.where(search_zone < drop_threshold)[0]
-    
-    # ---------------------------------------------------------------------
-    # !!! ADD THE DENSITY CONDITION HERE !!!
-    # ---------------------------------------------------------------------
-    # Set your minimum required consecutive/total points (e.g., 15 points)
-    MIN_REQUIRED_POINTS = 15 
-    
-    if len(drop_indices) < MIN_REQUIRED_POINTS:
-        if config.verbose > 1:
-            print(f"REJECTED: Only found {len(drop_indices)} points below threshold. Expected >= {MIN_REQUIRED_POINTS}.")
-        # Exit early: returns No Signal Detected, forcing the plot to say "No Drop Found"
-        return final_clean - baseline_offset, False, None, None, drop_threshold
-    # ---------------------------------------------------------------------
-    
-    # If it passes the check, proceed with normal processing
-    if len(drop_indices) > 0:
-        start_idx = end_of_error + drop_indices[0]
+    search_zone = zero_centered[end_of_error:]
 
-        # first check that final_clean is not empty
-        if final_clean.size > 0:
-            max_drop_depth = np.abs(np.min(final_clean))
-        else:
-            max_drop_depth = 0.0
-        
-        # Aggressive depth validation check
-        max_drop_depth = np.abs(np.min(final_clean))
-        if max_drop_depth < (8.0 * sigma) or max_drop_depth < 0.015:
-            return final_clean - baseline_offset, False, None, None, drop_threshold
-        
-        zero_centered_raw = signal - baseline_offset
-        shifted_start = area_testing.backtrack_to_local_max(time, zero_centered_raw, start_idx)
-        
-        if config.verbose > 1:
-            print(f"shifted start dif: {shifted_start - start_idx}")
+    if polarity == "positive":
+        signal_threshold = threshold
+        above_thresh = (search_zone > signal_threshold)
+    else:
+        signal_threshold = -threshold
+        above_thresh = (search_zone < signal_threshold)
+    
+    # 1. Identify contiguous blocks of threshold crossings
+    bounded = np.pad(above_thresh, (1, 1), mode='constant', constant_values=False)
+    starts = np.where(bounded[1:] & ~bounded[:-1])[0]
+    ends = np.where(~bounded[1:] & bounded[:-1])[0]
+    
+    valid_start_idx = None
+    
+    # 2. Loop through candidate blocks and verify BOTH duration and peak amplitude
+    for s, e in zip(starts, ends):
+        # Check duration
+        if (e - s) >= min_consecutive_points:
+            # Check peak height within/around candidate region to confirm real signal presence
+            region_peak = np.max(search_zone[s:min(s + 500, len(search_zone))]) if polarity == "positive" else abs(np.min(search_zone[s:min(s + 500, len(search_zone))]))
             
-        recovery = np.where(final_clean[start_idx:] >= 0)[0]
-        end_idx = shifted_start + recovery[0] if len(recovery) > 0 else len(signal)
-        
-        return final_clean - baseline_offset, True, shifted_start, end_idx, drop_threshold
-    
-    return final_clean - baseline_offset, False, None, None, drop_threshold
+            if region_peak >= min_peak_amplitude:
+                valid_start_idx = s
+                break
+            
+    # If no region passes duration + amplitude checks, treat trace as flat signal
+    if valid_start_idx is None:
+        return zero_centered, False, None, None, signal_threshold
 
-def plot_averaged_linearity(csv_file, detector_name="SiC", min_area_threshold=1e-10):
+    start_idx = end_of_error + valid_start_idx
+    shifted_start = start_idx
+
+    # 1. Look for recovery back below the threshold (or 0.5 * threshold) rather than strict <= 0
+    if polarity == "positive":
+        recovery = np.where(zero_centered[shifted_start:] <= (signal_threshold * 0.5))[0]
+    else:
+        recovery = np.where(zero_centered[shifted_start:] >= (-signal_threshold * 0.5))[0]
+
+    # 2. If signal never recovers (flat DC line / clipping), reject it
+    if len(recovery) == 0:
+        return zero_centered, False, None, None, signal_threshold
+
+    end_idx = shifted_start + recovery[0]
+
+    # 3. Guard against unphysically long pulses (e.g. max pulse width of 4.5 microseconds)
+    dt = time[1] - time[0] if len(time) > 1 else 1e-9
+    pulse_duration = (end_idx - start_idx) * dt
+    
+    if pulse_duration > 4.5e-6:  # 4.5 µs upper limit
+        return zero_centered, False, None, None, signal_threshold
+
+    return zero_centered, True, shifted_start, end_idx, signal_threshold
+
+def calculate_drop_area_sensitive(signal, time, start, end, polarity="positive"):
+    """
+    Integrates absolute area using consistent boundaries and zero-centered baseline.
+    """
+    v_segment = signal[start:end]
+    t_segment = time[start:end]
+    
+    if len(v_segment) < 2:
+        return 0.0
+
+    # Optional: Apply Savitzky-Golay smoothing if array is large enough, 
+    # but DO NOT shift local_zero on the pulse edge itself
+    if len(v_segment) > 31:
+        v_final = savgol_filter(v_segment, 31, 2)
+    else:
+        v_final = v_segment
+
+    # Direct integration on zero-centered signal
+    area = np.trapz(v_final, t_segment)
+    return abs(area)
+
+def plot_averaged_linearity(csv_file, detector_name="SiC", min_area_threshold=1e-11):
     # 1. Load and Prepare
     df = pd.read_csv(csv_file)
     df['Pulse'] = pd.to_numeric(df['Pulse'], errors='coerce')
@@ -990,7 +832,7 @@ def plot_total_dose_vs_area(csv_file, detector_name="SiC", HV=40.0, min_area_thr
     for hv_val in unique_hvs:
         hv_df = df_clean[df_clean['HV'] == hv_val].copy()
         # change minima to positive values (amplitudes)
-        hv_df['Min_V'] = hv_df['Min_V'].abs()
+        hv_df['max_V'] = hv_df['max_V'].abs()
         # Sort by Dose now for a clean line plot
         hv_df = hv_df.sort_values(by=['Beam', 'Pulse','Z'])
         # 5. Create the Plot
@@ -1002,7 +844,7 @@ def plot_total_dose_vs_area(csv_file, detector_name="SiC", HV=40.0, min_area_thr
             ax = sns.lineplot(
                 data=hv_df, 
                 x='Dose', 
-                y='Min_V', 
+                y='max_V', 
                 hue='Pulse', 
                 style='Beam', 
                 palette="viridis"
@@ -1012,7 +854,7 @@ def plot_total_dose_vs_area(csv_file, detector_name="SiC", HV=40.0, min_area_thr
             ax = sns.lineplot(
                 data=hv_df, 
                 x='DoseRate_sec', 
-                y='Min_V', 
+                y='max_V', 
                 hue='Pulse', 
                 style='Beam', 
                 palette="viridis"
@@ -1385,36 +1227,6 @@ def plot_dose_vs_area_by_energy(csv_file, detector_name="SiC", min_area_threshol
     
     return filter_percentage
 
-def calculate_drop_area_sensitive(signal, time, start, end):
-    """
-    Improved integration that subtracts the local baseline 
-    to prevent small signals from being 'washed out'.
-    """
-    # 1. Extract the segment
-    v_segment = signal[start:end]
-    t_segment = time[start:end]
-    
-    if len(v_segment) < 2:
-        return 0.0
-
-    # 2. Local Baseline Correction
-    # We take the average of the first 20 points of the window 
-    # (assuming the signal hasn't dropped yet) to find 'zero'
-    local_zero = np.mean(v_segment[:20])
-    v_corrected = v_segment - local_zero
-    
-    # 3. Smoothing (Optional but helpful for weak 191V signals)
-    # Using a smaller window than 200 to avoid 'flattening' small peaks
-    if len(v_corrected) > 31:
-        v_final = savgol_filter(v_corrected, 31, 2)
-    else:
-        v_final = v_corrected
-
-    # 4. Integrate
-    # We use the absolute value because 'drops' are negative (V*s)
-    area = np.trapz(v_final, t_segment)
-    return abs(area)
-
 # --- Execution ---
 def denoise_and_get_area(min_file, max_file, sensor, date, args, outpath):
     file_range = range(min_file, max_file + 1)
@@ -1431,12 +1243,15 @@ def denoise_and_get_area(min_file, max_file, sensor, date, args, outpath):
             arg_string += f"{key}: {value}\n"
             
         file_path = f"/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/data/{date}/scope-results-{date}-{str(file_num).zfill(4)} (1).csv"
+        check_path = Path(file_path)
+        if not check_path.is_file():
+            file_path = f"/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/data/{date}/scope-results-{date}-{str(file_num).zfill(4)}.csv"
         df = pd.read_csv(file_path)
         raw_signal = df["CH1"].values
         time = df["TIME"].values
         
         # 1. Process Signal (Unpacks original 7 arguments exactly)
-        final_clean, found, start, end, d_thresh = get_drop_event(time, raw_signal)
+        final_clean, found, start, end, d_thresh = get_drop_event(time, raw_signal, polarity='positive')
 
         # 2. Setup Plot Canvas Context
         fig, ax = plt.subplots(figsize=(12, 5))
@@ -1457,7 +1272,7 @@ def denoise_and_get_area(min_file, max_file, sensor, date, args, outpath):
             # extracts the manual mins and maxes
             manual_min = start + np.argmin(signal_only)
             manual_max = np.argmax(final_clean)
-            min_val = np.min(signal_only)
+            max_Val = np.max(signal_only)
 
             manual_diff = time[manual_max] - time[manual_min]
 
@@ -1470,7 +1285,7 @@ def denoise_and_get_area(min_file, max_file, sensor, date, args, outpath):
             arg_string += f"resorted pulse length: {find_nearest([0.5, 1.0, 2.0, 3.0], manual_diff/1e-06)}\n"
         else:
             manual_diff = None
-            min_val = 0
+            max_Val = 0
 
         # =========================================================================
         # PLOT RENDER GENERATION (Perfect Alignment guaranteed by native mapping)
@@ -1482,7 +1297,7 @@ def denoise_and_get_area(min_file, max_file, sensor, date, args, outpath):
         # AREA MATH & EXPORT STRATEGY
         # =========================================================================
         if found:
-            event_area = calculate_drop_area_sensitive(raw_signal, time, start, end)
+            event_area = calculate_drop_area_sensitive(final_clean, time, start, end, polarity='positive')
             
             if event_area < 0.5e-10:
                 found = False
@@ -1520,7 +1335,7 @@ def denoise_and_get_area(min_file, max_file, sensor, date, args, outpath):
         doses.append(dose)
         filepaths.append(file_path)
         manual_diffs.append(manual_diff)
-        mins.append(min_val)
+        mins.append(max_Val)
             
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Amplitude (V)")
@@ -1575,6 +1390,11 @@ def generator(log_file, output_file, outpath, date, sensor, HV=None):
             # Z is in m
             HV = row.get("HV", "Unknown")
             beam = row["Beam"]
+            collimator = row['Collimator']
+            resistance = row['Resistance'].split("ohm")[0]
+            resistance = resistance.strip()
+            if "1k" in resistance:
+                resistance = "1000"
             args = {"Z":Z,"HV":HV,"beam":beam,"pulse":pulse}
             file_min_num = file_min.replace(f"/home/lgad/data/{date}/scope-results-{date}-", "")
             file_min_num = int(re.sub(r"\D", "", file_min_num))
@@ -1584,33 +1404,37 @@ def generator(log_file, output_file, outpath, date, sensor, HV=None):
             # interate over all files
             areas, doses, filenames, manual_diffs, mins = denoise_and_get_area(file_min_num,file_max_num,sensor,date,args,outpath)
             # Append everything to our dataset rows
-            for area, dose, filename, manual_diff, min_val in zip(areas, doses, filenames, manual_diffs, mins):
+            for area, dose, filename, manual_diff, max_Val in zip(areas, doses, filenames, manual_diffs, mins):
                 if area is not None:
                     compiled_data.append({
                         "Filename": filename,              # <--- ADDED FILENAME
                         "HV": HV,
-                        "Beam": beam,
+                        "beam": int(re.sub(r"\D", "", beam)),
                         "Z": Z,
-                        "Nominal_Pulse_us": pulse,
-                        "Dose": dose,
-                        "Area": area,
+                        "pulse": pulse,
+                        "dose": dose,
+                        "area": area,
                         "Calculated_Width_us": manual_diff/1e-06, # <--- ADDED TIME WIDTH
                         "Resorted_width_us": find_nearest([0.5, 1.0, 2.0, 3.0], manual_diff/1e-06),
-                        "Min_V": min_val
+                        "max_V": max_Val,
+                        "collimator": collimator,
+                        "resistance": resistance
                     })
                 else:
                     # label rejected files as noise
                     compiled_data.append({
                         "Filename": filename,
                         "HV": np.nan,
-                        "Beam": "Noise/Rejected",
+                        "beam": "Noise/Rejected",
                         "Z": Z,
-                        "Nominal_Pulse_us": np.nan,
-                        "Dose": np.nan,
-                        "Area": 0.0,
+                        "pulse": np.nan,
+                        "dose": np.nan,
+                        "area": 0.0,
                         "Calculated_Width_us": 0.0,
                         "Resorted_Width_us": 0.0,
-                        "Min_V": min_val
+                        "max_V": max_Val,
+                        "collimator": collimator,
+                        "resistance": resistance
                     })
 
     output_df = pd.DataFrame(compiled_data)
@@ -1810,11 +1634,13 @@ def inspect_point(area_csv, beam_string, pulse_us, z, out_dir):
 
 if __name__ == "__main__":
     # generator(log_file, output_file,"2025-11-20","SiC")
-    log_file = "/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/log_files/lgad-2026-09-22-log.csv"
+    log_file = "/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/log_files/lgad-2026-09-22-log-mod.csv"
     output_file = "/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/analysis_code/pipeline/0922_generator_out.csv"
+    output_zero_bias = "/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/analysis_code/pipeline/0922_generator_out_zero_bias.csv"
     date = "2026-09-22"
     outpath = f"/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/analysis_code/0922_waveforms/cleaned_figs"
-    generator(log_file, output_file,outpath,"2026-09-22","SiC New Board",HV=100.0)
+    generator(log_file, output_file, outpath,"2026-09-22","SiC New Board",HV=100.0)
+    generator(log_file, output_zero_bias, outpath, "2026-09-22","SiC New Board", HV=0.0)
     # plot_total_dose_vs_area("generator_out.csv", HV=40,mode='total')
     # plot_total_dose_vs_area("generator_out.csv", HV=40,mode='instantaneous')
     # plot_instantaneous_dose_vs_area("/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/analysis_code/pipeline/generator_out.csv","SiC", HV=40)
