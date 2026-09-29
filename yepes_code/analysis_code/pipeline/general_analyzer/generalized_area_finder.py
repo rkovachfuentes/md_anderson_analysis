@@ -12,12 +12,12 @@ import seaborn as sns
 from scipy.optimize import curve_fit
 from PIL import Image
 from scipy.signal import find_peaks
-import old_response_curve_sic
 from pathlib import Path
 import re
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+data_path = "/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/data/"
 dose_file = "/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/dose_csvs/dose_scaling.csv"
 dose_scale_file = "/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/dose_csvs/dose_scale_factors.csv"
 
@@ -57,10 +57,8 @@ def dose_model(d, A, z0, b):
     return A / (effective_distance ** b)
 
 def convert_dose(dose_ref_csv, dose_scale_factors_csv, beam, dist_m, pulse_width, collimator_length_cm, dist_from_col=True):
-    # check if dist_m is less than 0; if so, treat it as 0 m from beam pipe
     if dist_m < 0:
-        dist_from_col = False
-        dist_m = 0.0
+        return np.nan
     beam = ''.join(filter(str.isdigit, beam))
     # read first csv file containing 85v pulse info
     dose_df = pd.read_csv(dose_ref_csv,skiprows=2)
@@ -82,13 +80,8 @@ def convert_dose(dose_ref_csv, dose_scale_factors_csv, beam, dist_m, pulse_width
         if config.verbose>1: print(f"log data points: {ylog_points}")
         initial_guess = [max(y_points), 0.05, 2.0]
         # we constrain z0 and b to stay physically realistic
-        # Enforce that b must stay physically close to an inverse-square factor
-        # Exponent lower bound = 1.0, z0 offset lower bound = 0.001
-        lower_bounds = [0.0, 0.001, 1.0]
-        upper_bounds = [np.inf, 1.0, 5.0]
-
         params, _ = curve_fit(dose_model, x_points, y_points, p0=initial_guess, 
-                            bounds=(lower_bounds, upper_bounds))
+                            bounds=(0, [np.inf, 1.0, 5.0]))
         A_fit, z0_fit, b_fit = params
         # calculate the specific desired dose - note this result is a rate (Gy/P, P=1 us)
         dose_gy = dose_model(dist_m, A_fit, z0_fit, b_fit) # this will give dose in Gy
@@ -123,10 +116,9 @@ def convert_dose(dose_ref_csv, dose_scale_factors_csv, beam, dist_m, pulse_width
         scale_factor = matched_factor.values[0]
         if config.verbose > 1: print(f"final dose: {dose_gy * scale_factor}")
         return dose_gy * scale_factor
-    except Exception as e:
-        print(f"Exception: {e}")
-        print("Returning NaN dose")
-        return np.nan
+    except:
+        print("Error, returning 0 dose")
+        return 0
     
 def rename_files_in_dir(directory_path):
     for filename in os.listdir(directory_path):
@@ -311,10 +303,10 @@ def denoise_and_get_area(min_file, max_file, sensor, date, args, outpath, polari
         for key, value in args.items():
             arg_string += f"{key}: {value}\n"
             
-        file_path = f"/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/data/{date}/scope-results-{date}-{str(file_num).zfill(4)} (1).csv"
+        file_path = f"{data_path}{date}/scope-results-{date}-{str(file_num).zfill(4)} (1).csv"
         check_path = Path(file_path)
         if not check_path.is_file():
-            file_path = f"/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/data/{date}/scope-results-{date}-{str(file_num).zfill(4)}.csv"
+            file_path = f"{data_path}/{date}/scope-results-{date}-{str(file_num).zfill(4)}.csv"
         df = pd.read_csv(file_path)
         raw_signal = df["CH1"].values
         time = df["TIME"].values
@@ -372,7 +364,7 @@ def denoise_and_get_area(min_file, max_file, sensor, date, args, outpath, polari
                 final_clean = np.zeros_like(final_clean)
             else:
                 if extrapolate_dose:
-                    dose = old_response_curve_sic.convert_dose(dose_file, dose_scale_file, args["beam"], args["Z"], args["pulse"], 2.0, True)
+                    dose = convert_dose(dose_file, dose_scale_file, args["beam"], args["Z"], args["pulse"], 2.0, True)
                 else:
                     dose = None
                 ax.set_title(f"DETECTION SUCCESS: {os.path.basename(file_path)}")
@@ -567,19 +559,8 @@ def inspect_point(area_csv, beam_string, pulse_us, z, out_dir):
     return
 
 if __name__ == "__main__":
-    # generator(log_file, output_file,"2025-11-20","SiC")
     log_file = "/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/log_files/lgad-2026-09-22-log-mod.csv"
     output_file = "/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/analysis_code/pipeline/0922_generator_out.csv"
-    output_zero_bias = "/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/analysis_code/pipeline/0922_generator_out_zero_bias.csv"
     date = "2026-09-22"
     outpath = f"/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/analysis_code/0922_waveforms/cleaned_figs"
-    generator(log_file, output_file, outpath,"2026-09-22","SiC New Board",HV=None)
-    generator(log_file, output_zero_bias, outpath, "2026-09-22","SiC New Board", HV=None)
-    # plot_total_dose_vs_area("generator_out.csv", HV=40,mode='total')
-    # plot_total_dose_vs_area("generator_out.csv", HV=40,mode='instantaneous')
-    # plot_instantaneous_dose_vs_area("/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/analysis_code/pipeline/generator_out.csv","SiC", HV=40)
-    beam_string = "Electron 191V"
-    pulse_us = 0.5
-    Z = 0 # Z in distance from collimator NOT beam exit
-    out_dir = f"/Users/rkfuentes/Documents/phd/research/md_anderson_analysis/yepes_code/analysis_code/pipeline/isolated_point_{beam_string}_{pulse_us}_{Z}Z"
-    # inspect_point("generator_out.csv",beam_string,pulse_us,Z,out_dir)
+    generator(log_file, output_file, outpath,"2026-09-22","SiC New Board",HV=100.0)
